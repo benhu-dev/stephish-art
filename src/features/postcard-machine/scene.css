@@ -1,0 +1,86 @@
+.postcard-scroll { position: relative; }
+.postcard-scene {
+  --skyline-far: #c2cfc1; --skyline: #a2b6aa; --window: #e9ecda;
+  --grass: #a8bd86; --grass-front: #b8c995; --grass-mark: #91a772;
+  --path: #dcd6b5; --trunk: #6f7652; --leaves: #6f9165; --leaf-highlight: #8da476;
+  --bench: #a69268; --bench-frame: #65705b;
+  position: sticky; top: 0; height: 100svh; overflow: hidden; isolation: isolate;
+  background: linear-gradient(#e3eddf, #f0edd7 61%, #bacb98); color: #304739;
+}
+.postcard-scene[data-theme="night"] {
+  --skyline-far: #344b56; --skyline: #3f5960; --window: #e4c88b;
+  --grass: #415f50; --grass-front: #4b6853; --grass-mark: #3d5746;
+  --path: #7d8871; --trunk: #35483d; --leaves: #2c5045; --leaf-highlight: #426858;
+  --bench: #817c60; --bench-frame: #2e453e;
+  background: linear-gradient(#1c303f, #405761 65%, #4b6853); color: #f0e8cd;
+  color-scheme: dark;
+}
+.park { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
+.night-sky { display: none; }
+[data-theme="night"] .night-sky { display: inline; }
+[data-theme="night"] .day-sky { display: none; }
+.scene-header { position: absolute; top: 30px; left: 42px; right: 42px; }
+.artist-signature { font-size: 25px; font-style: italic; letter-spacing: -1.4px; }
+.signature-star { display: inline-block; margin-left: 10px; color: #b9607c; font-size: 25px; }
+.scene-location, .eyebrow, .scroll-hint, .scene-footer {
+  font-family: Arial, Helvetica, sans-serif; font-size: 10px; letter-spacing: 1.3px;
+}
+.scene-location { text-transform: uppercase; }
+.scene-location span { margin-left: 12px; }
+.scene-heading { position: absolute; top: 11.4%; left: 16px; right: 16px; }
+.eyebrow { text-transform: uppercase; margin: 0 0 12px; font-size: 10px; letter-spacing: 2.4px; }
+.scene-heading h1 { font-size: clamp(28px, 3.6vw, 52px); letter-spacing: -1.8px; font-weight: 400; line-height: 1.1; margin: 0; }
+.scene-heading h1 em { font-weight: 400; }
+.intro { font-size: 14px; margin: 12px 0 0; }
+.machine-stage {
+  position: absolute; top: 27%; bottom: 13%; left: 50%;
+  aspect-ratio: 470 / 700; transform: translateX(-50%); max-width: 94vw;
+}
+.machine { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(5px 8px 3px #30412c18); }
+[data-theme="night"] .machine { filter: brightness(.88) drop-shadow(0 0 20px #fae5ae12); }
+.coin { opacity: 0; will-change: transform; }
+.postcard { transform: translateY(-166px); will-change: transform; }
+.handwritten-note { position: absolute; left: calc(50% + 205px); top: 52%; font-size: 24px; font-style: italic; line-height: 1.15; transform: rotate(-9deg); }
+.handwritten-note span { display: block; font-size: 48px; margin-left: -24px; transform: rotate(30deg); }
+.scene-instructions { position: absolute; bottom: 5.8%; left: 12px; right: 12px; }
+.scene-instructions > p:first-child { font-size: 16px; margin: 0 0 12px; }
+.progress-track { width: 112px; height: 2px; background: #31483630; margin: 0 auto; overflow: hidden; }
+.progress-track span { display: block; width: 100%; height: 100%; background: currentColor; transform: scaleX(0); transform-origin: left; }
+.scroll-hint { margin: 10px 0 0; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; }
+.scroll-hint span { margin-left: 9px; }
+.scene-footer { position: absolute; left: 42px; right: 42px; bottom: 22px; font-size: 10px; letter-spacing: .4px; }
+.theme-label span { font-size: 16px; vertical-align: -1px; margin-right: 4px; }
+.no-script { position: absolute; bottom: 13%; width: 100%; text-align: center; background: #f4ecd6; color: #304739; padding: 8px; }
+@media (max-width: 600px) {
+  .day-sky, .night-sky { transform: translate(-280px, -65px); }
+  .inner-tree-left { transform: translateX(250px); }
+  .inner-tree-right { transform: translateX(-265px); }
+  .scene-header { top: 24px; left: 22px; right: 22px; }
+  .artist-signature { font-size: 23px; }
+  .scene-location { font-size: 8px; letter-spacing: .6px; max-width: 100px; text-align: right; }
+  .scene-location span { display: none; }
+  .scene-heading { top: 13%; }
+  .scene-heading h1 { max-width: 340px; margin: auto; font-size: 37px; line-height: 1.03; }
+  .scene-heading h1 em { display: block; }
+  .eyebrow { font-size: 8px; letter-spacing: 1.8px; }
+  .intro { font-size: 12px; margin-top: 12px; }
+  .machine-stage { top: 31%; bottom: 15%; }
+  .handwritten-note { display: none; }
+  .scene-instructions { bottom: 6.5%; }
+  .scene-instructions > p:first-child { font-size: 14px; }
+  .scene-footer { bottom: 16px; left: 20px; right: 20px; font-size: 8px; }
+}
+@media (max-height: 600px) and (min-width: 601px) {
+  .scene-header { top: 15px; left: 24px; right: 24px; }
+  .scene-heading { top: 15%; left: 24px; right: auto; width: 27%; text-align: left; }
+  .scene-heading h1 { font-size: 29px; }
+  .scene-heading .eyebrow { font-size: 8px; }
+  .machine-stage { top: 6%; bottom: 17%; }
+  .handwritten-note { left: 73%; font-size: 19px; top: 38%; }
+  .scene-instructions { bottom: 3%; }
+  .scene-footer { bottom: 13px; left: 24px; right: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coin, .postcard { will-change: auto; }
+  .coin { opacity: 1; }
+}

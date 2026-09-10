@@ -1,191 +1,200 @@
-# Mission: Build the First 2.5D Postcard Machine POC
+# Mission
 
-## Objective
+## Phase and Unit
 
-Build the first runnable visual proof of concept for the artist postcard website.
+Phase 0 — Baseline and Architecture
+Unit 0.1 — Existing Repository Verification
 
-The purpose of this task is to evaluate the overall composition, handmade visual style, scroll pacing, and the coin and postcard animations. This is not the final production design.
+## Goal
 
-Read `AGENTS.md` before making changes and follow all project-level rules.
+Verify that the existing repository is a clean, working, and reproducible baseline before Payload CMS is introduced.
 
-## Reference Images
+This is a read-only inspection Unit. The existing Next.js application and 2.5D frontend are already implemented and must remain unchanged.
 
-Inspect every PNG, JPEG, and JPG file inside the `references/` directory before implementation.
+## Existing Project State
 
-Use the photographs as visual references for:
+The repository already contains:
 
-- The machine's overall silhouette
-- Its proportions
-- The handmade cardboard appearance
-- Its main colors and decorative shapes
-- The coin slot
-- The illustrated hands
-- The postcard output slot
+* An initialized Git repository connected to GitHub.
+* An existing Next.js application.
+* TypeScript, React, Tailwind CSS, and Anime.js.
+* A working 2.5D postcard-machine proof of concept.
+* Scroll-controlled coin and postcard animations.
+* Automatic day and night themes.
+* Responsive and reduced-motion behavior.
+* Existing lint, build, and scene validation scripts.
 
-The recreation does not need to be geometrically exact. Preserve the recognizable identity and handmade character of the installation.
+This Unit does not authorize recreating or restructuring any of these items.
 
-Do not simply display an original reference photograph as the finished machine. Recreate it as a lightweight 2.5D composition using layered HTML, CSS, SVG, masks, textures, and perspective.
+## In Scope
 
-If the reference images are missing or cannot be inspected, stop and ask the user before implementing the machine.
+* Read `AGENTS.md` and this `mission.md` completely.
+* Inspect the current Git status.
+* Record the current branch, commit, and configured remote.
+* Inspect `package.json` and the package lockfile.
+* Record the installed Node.js, npm, Next.js, React, TypeScript, Anime.js, and related package versions.
+* Inspect the existing source-directory structure.
+* Identify the existing public application entry points.
+* Identify the 2.5D scene components, hooks, utilities, styles, and tests.
+* Inspect `.gitignore` and confirm generated output is excluded.
+* Confirm whether `.next`, `node_modules`, test artifacts, and local environment files are excluded from Git.
+* Run the existing non-destructive validation commands.
+* Identify any current OneDrive, path, generated-output, or package-management risks.
+* Produce a concise readiness report for the future Payload integration Unit.
 
-## Scope
+## Out of Scope
 
-Create one scroll-driven page containing:
+Do not:
 
-1. A fixed full-screen 2.5D scene.
-2. A stylized Manhattan park background.
-3. The handmade postcard machine centered in the foreground.
-4. A coin insertion animation.
-5. A postcard printing animation.
-6. Automatic day and night presentation.
+* Modify any source file.
+* Modify configuration or documentation.
+* Modify `AGENTS.md` or `mission.md`.
+* Install, remove, or update dependencies.
+* Install Payload.
+* Run `git init`.
+* Run `create-next-app`.
+* Run `create-payload-app`.
+* Create or execute database migrations.
+* Add environment variables.
+* Reorganize directories.
+* Rename or move files.
+* Reformat files.
+* Repair detected issues.
+* Delete `.next` or any other directory.
+* Start implementing backend functionality.
+* Change the existing frontend.
+* Create a commit.
+* Push to GitHub.
+* Start the next Unit.
 
-Do not build marketing sections, ordering forms, authentication, payments, a database, email functionality, shipping, or an admin dashboard in this task.
+## Required Inspection
 
-## Scene
+Inspect at least:
 
-The page should use a tall scroll container with a sticky full-screen visual scene.
+* `AGENTS.md`
+* `mission.md`
+* `package.json`
+* The package lockfile
+* `.gitignore`
+* `next.config.*`
+* `tsconfig.json`
+* `src/app`
+* `src/features`
+* `scripts`
+* Existing test files and test configuration
 
-The scene must remain fixed while scroll progress controls the animation.
+Do not expose the contents of `.env` files or print secret values.
 
-The park should include simplified layers for:
+## Required Verification
 
-- Grass
-- Trees
-- A distant Manhattan-style skyline
-- Sky elements
-- Foreground or midground details when useful
+Run these commands if they exist and are supported by the repository:
 
-The scene should feel like an illustrated stage rather than a realistic 3D environment.
+```text
+git status --short
+git branch --show-current
+git rev-parse HEAD
+git remote -v
+node --version
+npm --version
+npm run lint
+npm run build
+node scripts/check-scene.mjs
+```
 
-Do not add dragging, rotation, camera movement, orbit controls, or 360-degree interaction.
+Before running project commands, inspect `package.json` to confirm the scripts and their purpose.
 
-## Day and Night
+Do not start a persistent development server.
 
-Use the visitor's local time by default:
-
-- Day: 6:00 AM through 5:59 PM
-- Night: 6:00 PM through 5:59 AM
-
-Daytime should include:
-
-- A bright sky
-- A sun
-- Slowly moving clouds
-
-Nighttime should include:
-
-- A darker sky
-- A moon
-- Stars
-- An occasional subtle shooting star
-
-Add these testing overrides:
-
-- `?theme=day`
-- `?theme=night`
-
-The query parameter should override the automatic local-time theme only for testing.
-
-## Machine
-
-Recreate the machine as a lightweight layered 2.5D illustration.
-
-Focus on the front-facing appearance because the machine will not rotate.
-
-Use simple depth, shadows, perspective, overlap, masks, and irregular shapes to communicate the handmade construction.
-
-Small decorative details may be simplified. Prioritize the elements that make the machine immediately recognizable.
-
-## Scroll Animation
-
-Keep scroll timing values in a clearly named configuration or constants file so they can be adjusted later.
-
-### Stage A: Coin
-
-During the first main animation stage:
-
-- A coin should appear near the machine.
-- It should travel toward the payment slot.
-- It should pass behind the front layer or mask.
-- It should disappear naturally inside the machine.
-
-### Stage B: Postcard
-
-During the second main animation stage:
-
-- A postcard should begin hidden inside the output slot.
-- It should move downward as though it is being printed.
-- It should become fully visible near the end of the page.
-- Use a temporary illustrated placeholder on the postcard.
-
-Both animations must follow scroll progress and reverse naturally when the user scrolls upward.
-
-Use Anime.js for the primary scroll-driven animation behavior.
-
-## Architecture
-
-Keep the implementation feature-based and follow `AGENTS.md`.
-
-Separate:
-
-- Scene presentation
-- Park background
-- Machine illustration
-- Coin presentation
-- Postcard presentation
-- Theme calculation
-- Scroll progress
-- Animation configuration
-
-Keep visual components separate from scroll and animation logic.
-
-Do not add new production dependencies without asking first.
-
-Do not modify `AGENTS.md` or `mission.md`.
-
-## Responsive Behavior
-
-The scene must work at minimum on:
-
-- Desktop around 1440 × 900
-- Mobile around 390 × 844
-
-Requirements:
-
-- Keep the machine visible and centered.
-- Avoid horizontal scrolling.
-- Prevent important elements from being clipped.
-- Scale the machine and background appropriately.
-- Provide a reduced-motion experience.
+If a command fails because of OneDrive synchronization, stale generated output, permissions, or environment configuration, report the failure and stop. Do not clean, delete, reinstall, or repair anything without approval.
 
 ## Acceptance Criteria
 
-The task is complete when:
+1. The current Git branch, commit, remote, and working-tree state are reported.
+2. The current framework and relevant dependency versions are reported.
+3. The existing application structure is summarized without changing it.
+4. The existing 2.5D frontend implementation and validation coverage are identified.
+5. Git-ignore coverage for generated output, dependencies, and local secrets is assessed.
+6. Existing lint completes successfully, or its exact failure is reported.
+7. Existing production build completes successfully, or its exact failure is reported.
+8. The existing scene validation completes successfully, or its exact failure is reported.
+9. No source, configuration, dependency, documentation, or lockfile changes are made.
+10. No Git commit or push is created.
+11. No persistent background process remains.
+12. Risks relevant to introducing Payload CMS are listed without attempting to fix them.
 
-- All reference images were inspected.
-- The project runs successfully.
-- The machine is recreated as a recognizable 2.5D illustration.
-- The original photographs are not used as the final machine layer.
-- The scene remains fixed during scrolling.
-- The coin enters and disappears into the payment slot.
-- The postcard prints from the output slot.
-- Both animations reverse correctly.
-- Automatic day and night modes work.
-- The day and night query overrides work.
-- Desktop and mobile layouts remain usable.
-- There are no obvious browser console errors.
-- `npm run lint` passes.
-- `npm run build` passes.
+## Stop and Ask If
+
+Stop and ask the user before continuing if:
+
+* `AGENTS.md` and `mission.md` conflict.
+* The working tree contains unexpected existing changes.
+* Validation appears to require deleting or regenerating files manually.
+* The repository cannot be inspected safely.
+* A command would modify tracked source or dependency files.
+* The current project appears corrupted.
+* The Git remote does not match the expected project.
+* Any requested action would exceed this read-only Unit.
 
 ## Completion Report
 
-When finished, provide a concise report containing:
+Return a concise report containing:
 
-1. A summary of the implementation.
-2. Files created or changed.
-3. Validation commands and their results.
-4. Placeholder assets or known visual limitations.
-5. Exact steps the user should manually verify.
-6. Any unresolved issue that needs a decision.
+### Outcome
 
-Do not create a Git commit.
+Use one of:
+
+* `COMPLETE`
+* `BLOCKED`
+* `FAILED`
+
+### Repository Baseline
+
+Report:
+
+* Branch
+* Commit
+* Remote
+* Working-tree status
+* Project location
+
+Do not expose private credentials contained in remote URLs.
+
+### Current Stack
+
+Report the relevant installed versions found in the repository and environment.
+
+### Existing Structure
+
+Summarize the important frontend directories and responsibilities. Do not suggest a broad refactor during this Unit.
+
+### Validation Results
+
+For every acceptance criterion, report:
+
+* Verification method
+* `PASS`, `FAIL`, `BLOCKED`, or `NOT RUN`
+
+### Payload Readiness Risks
+
+List only concrete risks observed from the repository, such as:
+
+* Version compatibility requiring investigation
+* Route-group integration considerations
+* Existing path or layout conflicts
+* OneDrive synchronization
+* Environment-variable preparation
+* Database or storage configuration still missing
+
+Do not install or configure Payload.
+
+### Repository State Confirmation
+
+Explicitly confirm:
+
+* Whether any file changed
+* Whether dependencies changed
+* Whether `AGENTS.md` or `mission.md` changed
+* Whether a commit or push was created
+* Whether any background process remains
+
+Do not proceed to Phase 1.

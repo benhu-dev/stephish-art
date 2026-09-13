@@ -2,251 +2,370 @@
 
 ## Phase and Unit
 
-Phase 1 — Payload Foundation  
-Unit 1.2 — Payload Configuration and Supabase Schema Foundation
+Phase 1 — Payload Foundation
+Unit 1.3 — Payload Admin and REST Route Integration
 
 ## Goal
 
-Create the minimum Payload configuration, establish the authenticated Users collection required by the future Admin Panel, connect Payload to the user-provided Supabase PostgreSQL database, and create the initial controlled database migration.
+Integrate the existing Payload 3.88.0 configuration into the existing Next.js application by adding the minimum official Admin Panel and REST API route foundation.
 
-This Unit must not expose Payload routes, an Admin Panel, REST, GraphQL, file uploads, orders, payments, or customer functionality.
+Preserve the existing public `/` route, 2.5D postcard experience, styling, metadata, responsive behavior, and animations.
 
-The existing Next.js frontend and 2.5D scene must remain functionally and visually unchanged.
+This Unit must not create an administrator account, expose GraphQL routes, add business collections, change the database schema, deploy the application, or begin storefront development.
 
 ## Accepted Baseline
 
-- Phase 1 / Unit 1.1 is complete.
-- Payload packages are aligned at version 3.88.0.
-- `payload`, `@payloadcms/next`, and `@payloadcms/db-postgres` are installed.
-- `graphql` exists only as a resolved peer/transitive dependency.
-- The existing frontend passed lint, production build, and scene validation.
-- A new Supabase project has been created for this application.
-- The project uses a Session pooler connection on port 5432.
-- `.env.local` contains `DATABASE_URL` and `PAYLOAD_SECRET`.
-- `.env.local` is user-owned, ignored by Git, and must not be modified or displayed.
+The accepted baseline includes:
 
-## Preflight Security Gate
+* Next.js 16.3.4
+* React and React DOM 19.2.8
+* TypeScript 5.9.3
+* Payload packages aligned at 3.88.0
+* PostgreSQL through the Supabase Session pooler
+* Verified TLS using `certs/prod-ca-2021.crt`
+* An applied initial Payload migration
+* An empty `users` table
+* No administrator account
+* No Payload Admin, REST, GraphQL, or playground route
+* Existing frontend validation passing
+* `package.json` configured as an ES module package
 
-Before modifying source files:
+The user has already completed and committed Unit 1.2.
 
-1. Read `AGENTS.md` and this mission completely.
-2. Inspect Git status and confirm the Unit 1.1 baseline is committed.
-3. Confirm `.env.local` is ignored by Git.
-4. Confirm `DATABASE_URL` and `PAYLOAD_SECRET` are present without printing, echoing, logging, or partially revealing either value.
-5. Confirm the installed Payload CLI can securely load `.env.local`.
-6. Confirm the database URL:
-   - Uses PostgreSQL.
-   - Uses a Supabase pooler host.
-   - Uses Session pooler port 5432.
-   - Requests SSL.
-7. Test the database connection without printing credentials.
-8. Inspect the existing user-created tables in the Supabase `public` schema.
+A modified `mission.md` is expected and is not a blocker.
 
-If the Payload CLI cannot load `.env.local`, stop and ask. Do not copy secrets into another file, install dotenv, or expose them through a command line.
+## API Decision
 
-If unexpected user-created tables already exist in the `public` schema, stop and report them before generating or applying a migration.
+This project will use Payload’s REST and Local APIs.
 
-Supabase-managed schemas such as `auth`, `storage`, `realtime`, and system schemas are not unexpected and must not be modified.
+GraphQL is not required for the current application architecture and must remain disabled.
+
+The presence of the transitive `graphql` package in the dependency tree does not authorize or enable GraphQL usage.
+
+Configure Payload with `graphQL.disable` set to `true`.
+
+Do not create GraphQL or GraphQL Playground route handlers.
+
+## Security Decision
+
+Payload account-unlock behavior must be treated as unsafe until a confirmed patched version is available.
+
+The `Users` collection must explicitly configure its `unlock` access function to unconditionally return `false`.
+
+Do not use `Boolean(req.user)` for `unlock`.
+
+The unlock prohibition must apply even when `req.user` contains an authenticated administrator.
+
+Do not implement a custom unlock endpoint or workaround.
+
+Account recovery and administrator-managed unlock functionality remain deferred to a later security Unit.
+
+## Pre-implementation Gate
+
+Before changing files:
+
+1. Read `AGENTS.md` and `mission.md` completely.
+2. Inspect `git status --short`.
+3. Confirm that Unit 1.2 is committed.
+4. Inspect:
+
+   * `package.json`
+   * `next.config.ts`
+   * `tsconfig.json`
+   * `src/app`
+   * `src/payload.config.ts`
+   * `src/collections/Users.ts`
+   * `src/payload-types.ts`
+   * `src/migrations`
+5. Inspect the installed Payload 3.88.0 Next.js integration exports, type declarations, and official route template.
+6. Determine the minimum route and layout structure required by this exact installed Payload version.
+7. Verify that no dependency upgrade is required.
+8. Verify that the existing migration remains applied and that no new migration is pending.
+
+Do not rely on a template from a different Payload version.
+
+If a framework or dependency change is required, stop and ask before proceeding.
 
 ## In Scope
 
-- Create the minimum typed Payload configuration.
-- Configure `@payloadcms/db-postgres` using `process.env.DATABASE_URL`.
-- Configure Payload using `process.env.PAYLOAD_SECRET`.
-- Fail clearly when either required environment variable is absent.
-- Disable automatic development schema push with `push: false`.
-- Create a minimal authenticated `users` collection required by the future Admin Panel.
-- Configure `admin.user` to use the Users collection.
-- Do not add unnecessary custom fields.
-- Do not grant anonymous access to user records.
-- Generate Payload TypeScript types.
-- Add only the minimum Payload CLI scripts to `package.json` if required.
-- Generate an initial named Postgres migration.
-- Inspect the generated migration before applying it.
-- Apply the migration only if it contains expected create operations for the new Payload schema and no destructive or unrelated operations.
-- Verify migration status after application.
-- Verify the expected Payload tables exist in the Supabase `public` schema.
-- Run dependency, lint, production build, and existing scene validation.
+* Add the official Payload Admin catch-all route.
+* Add the official Payload REST catch-all route.
+* Add the Payload route-group layout required by Payload 3.88.0.
+* Generate the Payload Admin import map using the installed Payload CLI.
+* Wrap the existing Next.js configuration with the supported Payload integration.
+* Add the required `@payload-config` TypeScript path alias if necessary.
+* Explicitly disable GraphQL in the Payload configuration.
+* Explicitly disable account unlock for every caller.
+* Explicitly configure or verify reasonable login-attempt and lock-duration settings.
+* Preserve the existing frontend under `/`.
+* Use temporary local servers only for validation and stop them afterward.
+* Run database, type, lint, build, route, security, and scene validation.
 
-## Database Rules
+## Route Requirements
 
-The Supabase project is new, but treat all database changes carefully.
+The completed application must expose:
 
-Allowed:
+* `/` — existing postcard frontend
+* `/admin` and its required catch-all segments — Payload Admin
+* `/api/[...slug]` — Payload REST API
 
-- Read-only connection and schema inspection.
-- Creating the initial Payload-owned tables, indexes, enums, relations, and migration metadata.
-- Applying the reviewed initial migration once.
+Do not create:
 
-Not allowed:
+* `/graphql`
+* `/api/graphql`
+* `/graphql-playground`
+* `/api/graphql-playground`
+* Any custom GraphQL route
+* Any custom account-unlock route
+* Any business API route
 
-- Dropping any schema, table, column, index, function, role, policy, or extension.
-- Truncating or deleting data.
-- Modifying Supabase-managed schemas.
-- Running `migrate:fresh`, `migrate:reset`, `migrate:refresh`, or rollback commands.
-- Enabling Supabase Data API.
-- Enabling automatic table exposure.
-- Enabling RLS automatically.
-- Creating an administrator account.
-- Using development push mode to mutate the schema.
-- Running unreviewed SQL.
-- Replacing the database or resetting its password.
+Set `graphQL.disable` to `true` in the Payload configuration.
 
-Before applying the migration, confirm that it contains no `DROP`, destructive `ALTER`, data deletion, schema deletion, or changes outside the intended Payload tables.
+Verify that no GraphQL route appears in the Next.js build output or responds successfully during route validation.
 
-## Users Collection
+## Next.js Layout Integration
 
-Create a minimal typed authentication collection for future Payload administrators.
+Use the route and layout structure officially supported by the installed Payload 3.88.0 package.
 
-Requirements:
+If separate root layouts are required, it is authorized to move only the existing application entry files into a frontend route group, for example:
 
-- Slug: `users`
-- Authentication enabled.
-- Use email as the Admin display title where appropriate.
-- Do not add customer-facing roles or business fields.
-- Do not add seeded credentials.
-- Do not create a first administrator.
-- Do not expose anonymous read, update, delete, unlock, or administrative access.
-- Follow the installed Payload version’s official types and supported access-control APIs.
+* `src/app/layout.tsx` to `src/app/(frontend)/layout.tsx`
+* `src/app/page.tsx` to `src/app/(frontend)/page.tsx`
 
-The known account-unlock advisory affecting Payload 3.88.0 remains a security gate for the future route-exposure Unit. Because this Unit creates no Payload route, do not implement an improvised workaround here. Record the risk in the completion report.
+Keep `/` as the public URL. Route-group names must not appear in the URL.
 
-## Expected Files
+Move files only when necessary for the official integration.
 
-Files that may be created or changed:
+When moving existing frontend entry files:
 
-- `src/payload.config.ts`
-- `src/collections/Users.ts`
-- `src/payload-types.ts`
-- `src/migrations/*`
-- `package.json`, only if minimum Payload CLI scripts are required
-- `package-lock.json`, only if npm legitimately updates script-related metadata without adding dependencies
+* Preserve their behavior and rendered output.
+* Preserve existing metadata.
+* Preserve global CSS loading.
+* Preserve all 2.5D components and animation behavior.
+* Make only path or import adjustments required by the move.
+* Do not refactor or restyle the frontend.
+* Do not modify files under `src/features/postcard-machine`.
 
-The user-approved `mission.md` change is expected but must not be modified by the agent.
+If the installed integration can be completed safely without moving the frontend root layout, prefer the smaller change.
 
-Do not modify:
+## Admin Requirements
 
-- `.env.local`
-- `.gitignore`
-- `AGENTS.md`
-- Existing frontend components
-- `src/app`
-- `src/features/postcard-machine`
-- Existing CSS or SVG files
-- `next.config.ts`
-- `tsconfig.json`
-- Public routes
-- Scene validation scripts
-- README files
+Use the Admin components and CSS exported by the installed Payload 3.88.0 packages.
 
-## Dependency Rules
+The import map must be generated by the installed Payload CLI, not written from memory.
 
-Do not install, remove, or upgrade dependencies.
-
-In particular, do not add:
-
-- Rich-text packages
-- Sharp
-- Storage adapters
-- Supabase JavaScript clients
-- Stripe packages
-- Email SDKs
-- Cross-env
-- Dotenv
-- Test frameworks
-- Validation libraries
-
-If an additional dependency is required, stop and ask before installing it.
-
-## Out of Scope
+The Admin Panel must load sufficiently to display the first-user bootstrap interface.
 
 Do not:
 
-- Create a Payload route group.
-- Create `/admin`.
-- Create REST or GraphQL routes.
-- Modify `next.config.ts` with `withPayload`.
-- Move the existing frontend into a route group.
-- Create customers, orders, products, payments, media, or settings collections.
-- Create Storage buckets.
-- Configure file uploads.
-- Configure Stripe or email.
-- Deploy the application.
-- Expose the database connection to browser code.
-- Start Unit 1.3.
-- Commit or push.
+* Enter an administrator email or password.
+* Create the first administrator.
+* Create test users.
+* Seed credentials.
+* Add default credentials to source files.
+* Store credentials in environment files.
+* Display or log environment values.
+
+First-user creation is reserved for manual user acceptance after this Unit’s automated work.
+
+## Users Collection Requirements
+
+Retain `auth: true` and the existing deny-by-default access posture.
+
+Ensure:
+
+* Anonymous collection reads are denied.
+* Anonymous normal creates are denied except Payload’s internal first-user bootstrap flow, if required.
+* Anonymous updates and deletes are denied.
+* Authenticated access does not automatically grant account unlock.
+* The `unlock` access function always returns `false`.
+
+Do not add roles or customer authentication in this Unit.
+
+## Database Rules
+
+* Use the existing `DATABASE_URL`.
+* Use the existing verified CA certificate configuration.
+* Do not display or copy the database URL.
+* Do not edit `.env.local`.
+* Do not change SSL verification.
+* Do not use schema push.
+* Do not generate or apply a migration unless an unexpected schema change is detected and approved.
+* Do not create, update, or delete database rows.
+* Do not create an administrator.
+* Do not modify existing migration files.
+* Confirm the initial migration remains applied.
+* Confirm the `users` table remains empty after automated validation.
+
+If route integration unexpectedly requires a schema change, stop and ask.
+
+## Dependency Rules
+
+Keep these packages at 3.88.0 during this Unit:
+
+* `payload`
+* `@payloadcms/next`
+* `@payloadcms/db-postgres`
+
+Do not upgrade to Payload 3.89.0 merely because it is newer. There is not yet sufficient evidence in this mission that it fixes the account-unlock issue.
+
+Do not:
+
+* Install new dependencies.
+* Run `npm audit fix`.
+* Use `--force`.
+* Use `--legacy-peer-deps`.
+* Approve pending lifecycle scripts.
+* Upgrade Next.js, React, TypeScript, Payload, or other packages.
+* Remove `graphql` from the lockfile.
+* Add `graphql` as a direct dependency.
+
+If an additional direct dependency is mandatory for the installed official integration, stop and report the exact package and reason.
+
+## Files Allowed to Change
+
+Expected changes may include only:
+
+* `next.config.ts`
+* `tsconfig.json`
+* `src/payload.config.ts`
+* `src/collections/Users.ts`
+* Official Payload route-group files under `src/app/(payload)`
+* Generated Payload import-map files
+* Existing `src/app/layout.tsx` and `src/app/page.tsx` only if moved into `src/app/(frontend)`
+* A frontend route-group layout or page created solely by moving the existing entry files
+* `package.json` only if a minimum non-dependency script adjustment is required
+* `mission.md` as the pre-existing user change
+
+Do not change:
+
+* `package-lock.json`
+* `.env.local`
+* `.gitignore`
+* `certs/prod-ca-2021.crt`
+* Existing migration files
+* `src/payload-types.ts`, unless generation proves the checked-in file is stale without a schema change
+* Files under `src/features/postcard-machine`
+* Existing visual assets, CSS, SVG, animation, or business content
+
+Do not create a new migration in this Unit.
+
+## Required Security Probes
+
+Verify account-unlock protection at two levels:
+
+1. Directly exercise the configured `unlock` access function without an authenticated user. The result must be `false`.
+2. Directly exercise the same function with a synthetic authenticated user. The result must also be `false`.
+
+If the REST unlock endpoint is reachable without creating a user, confirm that an unauthenticated request is rejected.
+
+Do not weaken or temporarily remove the protection for testing.
+
+Also confirm:
+
+* Payload configuration sets `graphQL.disable` to `true`.
+* No GraphQL route appears in the build route manifest.
+* A request to `/api/graphql` does not expose a GraphQL endpoint.
+* The REST Users collection cannot be listed anonymously.
+* No secret appears in build output, logs, Git diff, or generated client files.
+* The CA certificate contents are not copied into application bundles.
+* The Admin bootstrap route is not deployed anywhere.
+
+## Required Route Validation
+
+Run the production build, start it temporarily on localhost, and verify:
+
+* `GET /` returns the existing frontend successfully.
+* `GET /admin` returns or redirects to the Payload Admin first-user flow.
+* Admin static assets load without server errors.
+* `GET /api/users` is rejected for an unauthenticated caller.
+* `/api/graphql` does not expose GraphQL.
+* No GraphQL Playground route exists.
+* No unexpected browser console error occurs on `/`.
+* No unexpected server error occurs while loading `/admin`.
+
+HTTP status may differ where Payload intentionally redirects, but the final destination must be the expected Admin bootstrap interface.
+
+Do not submit the first-user form.
+
+Stop the local server after validation.
 
 ## Required Verification
 
-Run the applicable Windows/npm equivalents of:
+Inspect the scripts before executing them, then run the applicable equivalent of:
 
-1. `git status --short`
-2. `git check-ignore -v .env.local`
-3. Required-environment presence check without outputting values
-4. Read-only database connection and public-schema inspection
-5. Payload type generation
-6. Initial migration generation
-7. Migration source inspection
-8. Initial migration application
-9. Migration status verification
-10. `npm.cmd ls --depth=0`
-11. `npm.cmd run lint`
-12. `npm.cmd run build`
-13. `node scripts/check-scene.mjs`
-14. `git status --short`
-15. `git diff --stat`
+* `git status --short`
+* `node --version`
+* `npm.cmd --version`
+* `npm.cmd ls --depth=0`
+* `npm.cmd run payload -- migrate:status`
+* `npm.cmd run payload -- generate:importmap`
+* `npm.cmd run payload -- generate:types`
+* `npm.cmd run lint`
+* `npx.cmd tsc --noEmit`
+* `npm.cmd run build`
+* `node scripts/check-scene.mjs`
+* `git status --short`
+* `git diff --stat`
 
-Do not start a persistent development server.
+Use a temporary production server for route tests and stop it afterward.
+
+If `generate:types` produces no semantic change, do not leave formatting-only changes.
+
+Do not use a persistent development server for automated validation.
 
 ## Acceptance Criteria
 
-1. `.env.local` remains ignored and unchanged.
-2. No secret or connection-string content appears in output or tracked files.
-3. Payload successfully connects to Supabase over SSL.
-4. Payload config is strongly typed and uses required environment variables.
-5. Development schema push is disabled.
-6. A minimal authenticated Users collection exists.
-7. No anonymous user-record access is intentionally granted.
-8. Payload types generate successfully.
-9. The initial migration is generated and inspected.
-10. The migration contains only expected non-destructive Payload schema creation.
-11. The initial migration applies successfully.
-12. Migration status reports the migration as applied.
-13. No Supabase-managed schema is modified.
-14. No administrator account or business data is created.
-15. No `/admin`, REST, or GraphQL route exists.
-16. No dependency is added, removed, or upgraded.
+1. Payload Admin is integrated using the installed official Payload 3.88.0 interface.
+2. Payload REST API routes are integrated.
+3. `/` still serves the existing postcard frontend.
+4. `/admin` reaches the first-user bootstrap interface.
+5. No administrator or test user is created.
+6. The `users` table remains empty.
+7. Anonymous Users collection listing is denied.
+8. Account unlock returns false for anonymous and authenticated access contexts.
+9. Payload configuration explicitly disables GraphQL.
+10. No GraphQL or GraphQL Playground route exists.
+11. Payload packages remain at 3.88.0.
+12. No dependency is installed, upgraded, downgraded, or removed.
+13. No database migration is created or applied.
+14. The initial migration remains applied.
+15. No environment or secret file changes.
+16. No frontend feature, design, route URL, animation, or responsive behavior changes.
 17. Dependency-tree validation passes.
-18. Lint passes.
-19. Production build passes.
-20. Existing scene validation passes.
-21. Existing public frontend routes and visuals remain unchanged.
-22. Only approved files change.
+18. Lint passes, allowing only previously documented generated-migration warnings.
+19. TypeScript validation passes.
+20. Production build passes.
+21. Scene validation passes.
+22. Temporary validation servers are stopped.
 23. No commit or push is created.
-24. No background process remains.
+24. Only approved files are changed.
+25. Unit 1.4 is not started.
 
 ## Stop and Ask If
 
-Stop before proceeding if:
+Stop and ask before proceeding if:
 
-- Unit 1.1 is not committed.
-- `.env.local` is not ignored.
-- A required environment variable is missing.
-- Any secret would need to be copied, printed, or moved.
-- The URL is not the expected Supabase Session pooler connection.
-- SSL is not enabled.
-- The connection fails.
-- Unexpected user tables already exist.
-- Payload CLI does not securely load `.env.local`.
-- A new dependency is required.
-- A framework or dependency version must change.
-- Generated migration SQL is destructive or modifies unexpected schemas.
-- The migration requires force, reset, refresh, fresh, or rollback behavior.
-- A route or frontend restructuring is required.
-- Any validation fails after the change.
-- Any required action exceeds this Unit’s file or database scope.
+* Unit 1.2 is not committed.
+* An unexpected existing modification overlaps this Unit.
+* Official integration requires a dependency installation or version change.
+* Payload package versions are not aligned.
+* Integration requires an undocumented workaround.
+* A source file outside the allowed scope must change.
+* A new migration or schema change is required.
+* The initial migration is not applied.
+* The Users table is not empty before or after automated validation.
+* The Admin Panel cannot load without creating a user.
+* The first-user flow requires Codex to supply credentials.
+* GraphQL cannot be disabled as required.
+* A GraphQL endpoint remains exposed.
+* Account unlock cannot be denied for authenticated users.
+* SSL or database validation fails.
+* Frontend regression validation fails.
+* A secret is exposed.
+* A persistent process cannot be stopped.
 
-Do not attempt an unapproved workaround.
+Do not improvise around a stop condition.
 
 ## Completion Report
 
@@ -254,62 +373,86 @@ Provide:
 
 ### Outcome
 
-Use `COMPLETE`, `BLOCKED`, or `FAILED`.
+Use:
 
-### Configuration
+* `COMPLETE`
+* `BLOCKED`
+* `FAILED`
 
-Report the created config and collection structure without exposing secrets.
-
-### Database Connection
-
-Report only:
-
-- Connection success or failure
-- Session pooler confirmation
-- Port confirmation
-- SSL confirmation
-
-Never report the hostname, project reference, username, password, complete URL, or Payload secret.
-
-### Migration Review
+### Integration Summary
 
 Report:
 
-- Migration filename
-- Tables and major database objects created
-- Confirmation that no destructive operation was present
-- Migration status
+* Final route-group structure
+* Files created
+* Files moved
+* Files modified
+* Official installed Payload exports or templates used
+* Whether the existing frontend root layout needed relocation
 
-### Security Review
+### Route Evidence
 
-Confirm:
+Report results for:
 
-- No secret was exposed
-- `.env.local` was not changed
-- No anonymous user access was intentionally granted
-- No Admin/API route exists
-- No administrator was created
-- No Supabase-managed schema was modified
-- The Payload account-unlock advisory remains gated before route exposure
+* `/`
+* `/admin`
+* Admin assets
+* `/api/users`
+* `/api/graphql`
+* GraphQL Playground absence
+
+Do not report database or credential values.
+
+### Security Evidence
+
+Report:
+
+* Anonymous unlock access result
+* Synthetic authenticated unlock access result
+* Anonymous Users listing result
+* GraphQL configuration state
+* GraphQL route absence
+* Users table row count
+* Confirmation that no account was created
+* Confirmation that no secret was exposed
+
+### Database Evidence
+
+Report:
+
+* Migration status
+* Whether any migration was created or applied
+* Whether any schema object changed
+* Whether any row was created, updated, or deleted
 
 ### Regression Results
 
-Report actual outcomes for:
+Report the actual outcome of:
 
-- Dependency tree
-- Lint
-- Production build
-- Scene validation
+* Dependency-tree validation
+* Lint
+* TypeScript
+* Production build
+* Scene validation
+* Local route probes
+
+### Acceptance Evidence
+
+For all 25 acceptance criteria, report:
+
+* Verification method
+* `PASS`, `FAIL`, `BLOCKED`, or `NOT RUN`
 
 ### Repository State
 
-Report:
+Confirm:
 
-- Final changed-file list
-- Dependency changes
-- Frontend changes
-- Database changes
-- Commit/push status
-- Background process status
+* Final changed-file list
+* Dependency changes
+* Database changes
+* Frontend behavior changes
+* Environment-file changes
+* Commit or push
+* Remaining listeners or background processes
 
-Do not begin Unit 1.3.
+Do not begin Unit 1.4.

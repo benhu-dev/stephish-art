@@ -34,6 +34,9 @@ export default buildConfig({
     },
     push: false,
   }),
+  graphQL: {
+    disable: true,
+  },
   secret: payloadSecret,
   typescript: {
     outputFile: path.resolve(dirname, "payload-types.ts"),

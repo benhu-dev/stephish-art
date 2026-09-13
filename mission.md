@@ -2,223 +2,251 @@
 
 ## Phase and Unit
 
-Phase 1 — Payload Foundation
-Unit 1.1 — Payload Compatibility and Dependency Foundation
+Phase 1 — Payload Foundation  
+Unit 1.2 — Payload Configuration and Supabase Schema Foundation
 
 ## Goal
 
-Verify Payload CMS compatibility with the existing project and install only the minimum Payload dependencies required for a future PostgreSQL-backed integration.
+Create the minimum Payload configuration, establish the authenticated Users collection required by the future Admin Panel, connect Payload to the user-provided Supabase PostgreSQL database, and create the initial controlled database migration.
 
-This Unit establishes the dependency foundation. It does not configure Payload routes, connect a database, create collections, or expose an Admin Panel.
+This Unit must not expose Payload routes, an Admin Panel, REST, GraphQL, file uploads, orders, payments, or customer functionality.
 
-The existing Next.js application and 2.5D frontend must remain functionally and visually unchanged.
+The existing Next.js frontend and 2.5D scene must remain functionally and visually unchanged.
 
-## Existing Baseline
+## Accepted Baseline
 
-The accepted pre-Payload baseline is:
+- Phase 1 / Unit 1.1 is complete.
+- Payload packages are aligned at version 3.88.0.
+- `payload`, `@payloadcms/next`, and `@payloadcms/db-postgres` are installed.
+- `graphql` exists only as a resolved peer/transitive dependency.
+- The existing frontend passed lint, production build, and scene validation.
+- A new Supabase project has been created for this application.
+- The project uses a Session pooler connection on port 5432.
+- `.env.local` contains `DATABASE_URL` and `PAYLOAD_SECRET`.
+- `.env.local` is user-owned, ignored by Git, and must not be modified or displayed.
 
-* Branch: `main`
-* Baseline commit: `c86775323d41a3298f234a94eac946a8ee0e2c35`
-* Node.js: `24.19.0`
-* npm: `11.17.0`
-* Next.js: `16.3.4`
-* React and React DOM: `19.2.8`
-* TypeScript: `5.9.3`
-* Anime.js: `4.5.0`
-* Tailwind CSS: `4.3.3`
+## Preflight Security Gate
 
-The existing baseline has already passed lint, production build, and scene validation.
+Before modifying source files:
 
-## Acceptance Contract
+1. Read `AGENTS.md` and this mission completely.
+2. Inspect Git status and confirm the Unit 1.1 baseline is committed.
+3. Confirm `.env.local` is ignored by Git.
+4. Confirm `DATABASE_URL` and `PAYLOAD_SECRET` are present without printing, echoing, logging, or partially revealing either value.
+5. Confirm the installed Payload CLI can securely load `.env.local`.
+6. Confirm the database URL:
+   - Uses PostgreSQL.
+   - Uses a Supabase pooler host.
+   - Uses Session pooler port 5432.
+   - Requests SSL.
+7. Test the database connection without printing credentials.
+8. Inspect the existing user-created tables in the Supabase `public` schema.
 
-Before installing anything:
+If the Payload CLI cannot load `.env.local`, stop and ask. Do not copy secrets into another file, install dotenv, or expose them through a command line.
 
-1. Inspect the current package manifest and lockfile.
-2. Verify compatibility using current official Payload documentation and package metadata.
-3. Record the exact Payload and related package versions proposed for installation.
-4. Confirm that npm can resolve them without force flags or ignored peer dependencies.
-5. Confirm that only the minimum required dependencies will be installed.
+If unexpected user-created tables already exist in the `public` schema, stop and report them before generating or applying a migration.
 
-Do not choose package versions merely because they are the newest. They must be mutually compatible with the existing project.
+Supabase-managed schemas such as `auth`, `storage`, `realtime`, and system schemas are not unexpected and must not be modified.
 
 ## In Scope
 
-* Read `AGENTS.md` and this `mission.md`.
-* Inspect current Git status.
-* Treat the user-approved `mission.md` change as expected.
-* Inspect `package.json` and `package-lock.json`.
-* Verify official Payload requirements for:
+- Create the minimum typed Payload configuration.
+- Configure `@payloadcms/db-postgres` using `process.env.DATABASE_URL`.
+- Configure Payload using `process.env.PAYLOAD_SECRET`.
+- Fail clearly when either required environment variable is absent.
+- Disable automatic development schema push with `push: false`.
+- Create a minimal authenticated `users` collection required by the future Admin Panel.
+- Configure `admin.user` to use the Users collection.
+- Do not add unnecessary custom fields.
+- Do not grant anonymous access to user records.
+- Generate Payload TypeScript types.
+- Add only the minimum Payload CLI scripts to `package.json` if required.
+- Generate an initial named Postgres migration.
+- Inspect the generated migration before applying it.
+- Apply the migration only if it contains expected create operations for the new Payload schema and no destructive or unrelated operations.
+- Verify migration status after application.
+- Verify the expected Payload tables exist in the Supabase `public` schema.
+- Run dependency, lint, production build, and existing scene validation.
 
-  * Node.js
-  * Next.js
-  * React
-  * TypeScript
-  * npm
-  * PostgreSQL adapter
-* Inspect current npm package metadata and peer dependencies.
-* Select one mutually compatible Payload version set.
-* Install only the minimum dependencies required for:
+## Database Rules
 
-  * Payload core
-  * Payload’s Next.js integration
-  * Payload’s PostgreSQL adapter
-* Keep related Payload packages on the same compatible release version where required.
-* Update `package.json` and `package-lock.json` through npm.
-* Run dependency integrity, lint, build, and existing scene validation.
-* Report dependency advisories and installation-script warnings without automatically applying unrelated fixes.
+The Supabase project is new, but treat all database changes carefully.
 
-## Expected Dependency Scope
+Allowed:
 
-The expected dependency candidates are:
+- Read-only connection and schema inspection.
+- Creating the initial Payload-owned tables, indexes, enums, relations, and migration metadata.
+- Applying the reviewed initial migration once.
 
-* `payload`
-* `@payloadcms/next`
-* `@payloadcms/db-postgres`
+Not allowed:
 
-Confirm the current official requirements before installation.
+- Dropping any schema, table, column, index, function, role, policy, or extension.
+- Truncating or deleting data.
+- Modifying Supabase-managed schemas.
+- Running `migrate:fresh`, `migrate:reset`, `migrate:refresh`, or rollback commands.
+- Enabling Supabase Data API.
+- Enabling automatic table exposure.
+- Enabling RLS automatically.
+- Creating an administrator account.
+- Using development push mode to mutate the schema.
+- Running unreviewed SQL.
+- Replacing the database or resetting its password.
 
-Do not install optional packages unless they are proven necessary for this Unit.
+Before applying the migration, confirm that it contains no `DROP`, destructive `ALTER`, data deletion, schema deletion, or changes outside the intended Payload tables.
 
-Packages that are expected to remain deferred include:
+## Users Collection
 
-* `@payloadcms/richtext-lexical`
-* `sharp`
-* `graphql`
-* Stripe SDK or Payload Stripe plugin
-* Storage adapters
-* Email SDKs
-* Test frameworks
-* Validation libraries
-* Supabase client libraries
+Create a minimal typed authentication collection for future Payload administrators.
 
-If an additional package is technically required to complete the minimum installation, explain why and ask the user before adding it.
+Requirements:
 
-## Package-Management Rules
+- Slug: `users`
+- Authentication enabled.
+- Use email as the Admin display title where appropriate.
+- Do not add customer-facing roles or business fields.
+- Do not add seeded credentials.
+- Do not create a first administrator.
+- Do not expose anonymous read, update, delete, unlock, or administrative access.
+- Follow the installed Payload version’s official types and supported access-control APIs.
 
-* Continue using npm because the repository already uses `package-lock.json`.
-* Use `npm.cmd` where PowerShell’s script policy requires it.
-* Do not switch to pnpm or yarn.
-* Do not delete or regenerate the lockfile from scratch.
-* Do not use `--force`.
-* Do not use `--legacy-peer-deps`.
-* Do not suppress peer-dependency conflicts.
-* Do not run `npm audit fix`.
-* Do not perform unrelated dependency upgrades.
-* Do not approve unrelated package install scripts automatically.
-* Do not change global npm configuration.
+The known account-unlock advisory affecting Payload 3.88.0 remains a security gate for the future route-exposure Unit. Because this Unit creates no Payload route, do not implement an improvised workaround here. Record the risk in the completion report.
 
-If compatible dependencies cannot be resolved normally, stop and ask the user.
+## Expected Files
 
-## Files Allowed to Change
+Files that may be created or changed:
 
-Expected changes are limited to:
+- `src/payload.config.ts`
+- `src/collections/Users.ts`
+- `src/payload-types.ts`
+- `src/migrations/*`
+- `package.json`, only if minimum Payload CLI scripts are required
+- `package-lock.json`, only if npm legitimately updates script-related metadata without adding dependencies
 
-* `package.json`
-* `package-lock.json`
+The user-approved `mission.md` change is expected but must not be modified by the agent.
 
-Do not change other files unless an unexpected, mandatory installation requirement is discovered and approved by the user.
+Do not modify:
 
-In particular, do not modify:
+- `.env.local`
+- `.gitignore`
+- `AGENTS.md`
+- Existing frontend components
+- `src/app`
+- `src/features/postcard-machine`
+- Existing CSS or SVG files
+- `next.config.ts`
+- `tsconfig.json`
+- Public routes
+- Scene validation scripts
+- README files
 
-* Existing frontend source files
-* `src/app`
-* `src/features/postcard-machine`
-* Existing CSS or SVG
-* `next.config.ts`
-* `tsconfig.json`
-* `.gitignore`
-* `README.md`
-* `AGENTS.md`
-* `mission.md`
-* Environment files
-* Test scripts
+## Dependency Rules
+
+Do not install, remove, or upgrade dependencies.
+
+In particular, do not add:
+
+- Rich-text packages
+- Sharp
+- Storage adapters
+- Supabase JavaScript clients
+- Stripe packages
+- Email SDKs
+- Cross-env
+- Dotenv
+- Test frameworks
+- Validation libraries
+
+If an additional dependency is required, stop and ask before installing it.
 
 ## Out of Scope
 
 Do not:
 
-* Run `create-payload-app`.
-* Run `create-next-app`.
-* Replace or regenerate the existing application.
-* Create `payload.config.ts`.
-* Create Payload route groups.
-* Move the existing frontend into a route group.
-* Add or modify an `/admin` route.
-* Connect to Supabase or PostgreSQL.
-* Add a database connection string.
-* Generate or execute database migrations.
-* Create administrator accounts.
-* Create Payload collections.
-* Configure uploads.
-* Configure Stripe.
-* Configure email.
-* Add environment secrets.
-* Start a persistent development server.
-* Modify the 2.5D design or animation.
-* Begin Unit 1.2.
-* Commit or push changes.
-
-## Acceptance Criteria
-
-1. Current official Payload compatibility requirements are reported with source links.
-2. The selected Payload package versions are reported before installation.
-3. The selected versions support the existing Next.js and Node.js versions.
-4. npm resolves the dependency set without `--force` or `--legacy-peer-deps`.
-5. Only approved minimum Payload dependencies are added.
-6. Existing dependencies are not broadly upgraded or removed.
-7. `npm ls --depth=0` completes without an invalid dependency tree.
-8. The existing lint command passes.
-9. The existing production build passes.
-10. The existing scene validation passes.
-11. Existing public routes and 2.5D behavior remain unchanged.
-12. Only `package.json` and `package-lock.json` are changed.
-13. No secrets, database URLs, or environment files are added.
-14. No commit or push is created.
-15. No background process remains.
+- Create a Payload route group.
+- Create `/admin`.
+- Create REST or GraphQL routes.
+- Modify `next.config.ts` with `withPayload`.
+- Move the existing frontend into a route group.
+- Create customers, orders, products, payments, media, or settings collections.
+- Create Storage buckets.
+- Configure file uploads.
+- Configure Stripe or email.
+- Deploy the application.
+- Expose the database connection to browser code.
+- Start Unit 1.3.
+- Commit or push.
 
 ## Required Verification
 
-Inspect the scripts before running them, then run the applicable equivalent of:
+Run the applicable Windows/npm equivalents of:
 
-```text
-git status --short
-node --version
-npm.cmd --version
-npm.cmd ls --depth=0
-npm.cmd run lint
-npm.cmd run build
-node scripts/check-scene.mjs
-git status --short
-git diff --stat
-```
+1. `git status --short`
+2. `git check-ignore -v .env.local`
+3. Required-environment presence check without outputting values
+4. Read-only database connection and public-schema inspection
+5. Payload type generation
+6. Initial migration generation
+7. Migration source inspection
+8. Initial migration application
+9. Migration status verification
+10. `npm.cmd ls --depth=0`
+11. `npm.cmd run lint`
+12. `npm.cmd run build`
+13. `node scripts/check-scene.mjs`
+14. `git status --short`
+15. `git diff --stat`
 
-Also inspect:
+Do not start a persistent development server.
 
-* The final root dependency list.
-* The exact versions resolved in `package-lock.json`.
-* npm peer-dependency output.
-* npm audit summary.
-* Any install-script warnings.
+## Acceptance Criteria
 
-Do not run a persistent development server.
+1. `.env.local` remains ignored and unchanged.
+2. No secret or connection-string content appears in output or tracked files.
+3. Payload successfully connects to Supabase over SSL.
+4. Payload config is strongly typed and uses required environment variables.
+5. Development schema push is disabled.
+6. A minimal authenticated Users collection exists.
+7. No anonymous user-record access is intentionally granted.
+8. Payload types generate successfully.
+9. The initial migration is generated and inspected.
+10. The migration contains only expected non-destructive Payload schema creation.
+11. The initial migration applies successfully.
+12. Migration status reports the migration as applied.
+13. No Supabase-managed schema is modified.
+14. No administrator account or business data is created.
+15. No `/admin`, REST, or GraphQL route exists.
+16. No dependency is added, removed, or upgraded.
+17. Dependency-tree validation passes.
+18. Lint passes.
+19. Production build passes.
+20. Existing scene validation passes.
+21. Existing public frontend routes and visuals remain unchanged.
+22. Only approved files change.
+23. No commit or push is created.
+24. No background process remains.
 
 ## Stop and Ask If
 
-Stop and ask the user before proceeding if:
+Stop before proceeding if:
 
-* Official Payload documentation does not support the existing Next.js or Node.js version.
-* npm reports an unresolved peer-dependency conflict.
-* Installation requires `--force` or `--legacy-peer-deps`.
-* A Payload package requires downgrading or upgrading Next.js, React, Node.js, or TypeScript.
-* Installation requires changing source or configuration files in this Unit.
-* An additional non-approved package appears mandatory.
-* npm attempts to remove or broadly upgrade existing dependencies.
-* Existing frontend validation fails after installation.
-* Unexpected pre-existing source changes overlap this Unit.
-* A security warning indicates immediate material risk.
-* Any operation would exceed the allowed file scope.
+- Unit 1.1 is not committed.
+- `.env.local` is not ignored.
+- A required environment variable is missing.
+- Any secret would need to be copied, printed, or moved.
+- The URL is not the expected Supabase Session pooler connection.
+- SSL is not enabled.
+- The connection fails.
+- Unexpected user tables already exist.
+- Payload CLI does not securely load `.env.local`.
+- A new dependency is required.
+- A framework or dependency version must change.
+- Generated migration SQL is destructive or modifies unexpected schemas.
+- The migration requires force, reset, refresh, fresh, or rollback behavior.
+- A route or frontend restructuring is required.
+- Any validation fails after the change.
+- Any required action exceeds this Unit’s file or database scope.
 
-Do not attempt a workaround without approval.
+Do not attempt an unapproved workaround.
 
 ## Completion Report
 
@@ -226,65 +254,62 @@ Provide:
 
 ### Outcome
 
-Use:
+Use `COMPLETE`, `BLOCKED`, or `FAILED`.
 
-* `COMPLETE`
-* `BLOCKED`
-* `FAILED`
+### Configuration
 
-### Compatibility Decision
+Report the created config and collection structure without exposing secrets.
+
+### Database Connection
+
+Report only:
+
+- Connection success or failure
+- Session pooler confirmation
+- Port confirmation
+- SSL confirmation
+
+Never report the hostname, project reference, username, password, complete URL, or Payload secret.
+
+### Migration Review
 
 Report:
 
-* Official requirements
-* Existing versions
-* Selected Payload versions
-* Compatibility conclusion
-* Official sources consulted
-
-### Dependency Changes
-
-List:
-
-* Packages added
-* Exact installed versions
-* Any transitive-install warnings
-* npm audit summary
-
-### Acceptance Evidence
-
-For every acceptance criterion, report:
-
-* Verification method
-* `PASS`, `FAIL`, `BLOCKED`, or `NOT RUN`
-
-### Regression Results
-
-Report the actual outcome of:
-
-* Dependency-tree validation
-* Lint
-* Production build
-* Scene validation
+- Migration filename
+- Tables and major database objects created
+- Confirmation that no destructive operation was present
+- Migration status
 
 ### Security Review
 
 Confirm:
 
-* No secret was added
-* No environment file changed
-* No database connection was attempted
-* No install conflict was bypassed
-* No unrelated audit fix was applied
+- No secret was exposed
+- `.env.local` was not changed
+- No anonymous user access was intentionally granted
+- No Admin/API route exists
+- No administrator was created
+- No Supabase-managed schema was modified
+- The Payload account-unlock advisory remains gated before route exposure
+
+### Regression Results
+
+Report actual outcomes for:
+
+- Dependency tree
+- Lint
+- Production build
+- Scene validation
 
 ### Repository State
 
-Confirm:
+Report:
 
-* Final changed files
-* Whether dependencies changed
-* Whether frontend files changed
-* Whether a commit or push was created
-* Whether a background process remains
+- Final changed-file list
+- Dependency changes
+- Frontend changes
+- Database changes
+- Commit/push status
+- Background process status
 
-Do not begin Unit 1.2.
+Do not begin Unit 1.3.

@@ -6,6 +6,7 @@ import { buildConfig } from "payload";
 import { Customers } from "./collections/Customers";
 import { Orders } from "./collections/Orders";
 import { Users } from "./collections/Users";
+import { CheckoutSettings } from "./globals/CheckoutSettings";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -30,6 +31,7 @@ export default buildConfig({
     user: Users.slug,
   },
   collections: [Users, Customers, Orders],
+  globals: [CheckoutSettings],
   db: postgresAdapter({
     pool: {
       connectionString: databaseURL,

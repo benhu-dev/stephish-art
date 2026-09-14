@@ -89,8 +89,12 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    'checkout-settings': CheckoutSetting;
+  };
+  globalsSelect: {
+    'checkout-settings': CheckoutSettingsSelect<false> | CheckoutSettingsSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
@@ -371,6 +375,29 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "checkout-settings".
+ */
+export interface CheckoutSetting {
+  id: number;
+  /**
+   * Enter an integer number of cents. 500 = $5.00.
+   */
+  minimumAmountCents: number;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "checkout-settings_select".
+ */
+export interface CheckoutSettingsSelect<T extends boolean = true> {
+  minimumAmountCents?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

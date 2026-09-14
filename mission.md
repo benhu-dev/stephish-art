@@ -1,108 +1,130 @@
-# Phase 1 — Unit 1.4: Secure the Supabase Boundary for Payload Tables
+# Phase 2 — Unit 2.1: Private Customers Collection
 
 ## Goal
 
-Enable PostgreSQL Row Level Security on every existing Payload-owned table in Supabase's public schema so Supabase API roles cannot bypass Payload access control.
+Create the minimal Customers collection needed for future guest checkout and Stripe integration.
 
-Payload Admin, Payload REST, the existing administrator, and the public postcard frontend must continue working normally.
+Customers do not have accounts and cannot authenticate. The collection must be private, accessible only through authenticated Payload administration or future trusted server-side operations.
 
 ## Current Baseline
 
-- Phase 1 Unit 1.3 is committed.
-- Payload 3.88.0 Admin and REST routes are integrated.
+- Phase 1 is complete and committed.
+- Payload 3.88.0 Admin and REST routes are operational.
 - GraphQL is disabled.
 - Development schema push is disabled.
-- The initial Payload migration is applied.
-- One administrator was created manually through `/admin`.
+- All eight existing Payload tables have RLS enabled with no permissive policies.
+- One Payload administrator exists.
 - The public postcard experience is working.
 - The current `mission.md` modification is intentional and authorized.
 
-Record the starting HEAD and Git status during preflight. Preserve unrelated user changes.
+Record the starting HEAD and Git status. Stop if the Phase 1 changes were not committed or if unrelated uncommitted changes exist other than `mission.md`.
 
-## Allowed Work
+## Collection Contract
 
-1. Inspect the live database before making changes:
+Add a `customers` collection with only these business fields:
 
-   - Identify every Payload-owned table currently present in the public schema.
-   - Confirm they match the existing migration and expected baseline.
-   - Inspect RLS state, table ownership, relevant grants, the runtime database role, and whether that role owns the tables or bypasses RLS.
-   - Do not print administrator data, password hashes, session tokens, connection strings, certificate contents, or environment values.
+1. `fullName`
+   - Text
+   - Required
+   - Trim surrounding whitespace
+   - Maximum 150 characters
 
-2. Add one reviewed Payload migration that:
+2. `email`
+   - Email
+   - Required
+   - Unique
+   - Normalize by trimming whitespace and converting to lowercase before validation or persistence
 
-   - Enables RLS on every existing Payload-owned public table.
-   - Does not use FORCE ROW LEVEL SECURITY.
-   - Does not create permissive policies.
-   - Does not change table data, columns, indexes, constraints, ownership, grants, or Supabase-managed schemas.
-   - Does not create or modify business collections.
-   - Includes a conventional down migration only if required by the repository's established Payload migration structure. Never execute the down migration in this Unit.
+3. `stripeCustomerId`
+   - Text
+   - Optional
+   - Unique when present
+   - Intended for a future Stripe Customer identifier
+   - Do not integrate Stripe or create Stripe records in this Unit
 
-3. Before applying the migration:
+Use `email` as the Admin title and show `fullName`, `email`, and `updatedAt` as the useful default columns.
 
-   - Inspect the generated SQL or migration implementation.
-   - Confirm it contains only the expected RLS changes and migration bookkeeping.
-   - Stop before applying if it is destructive, contains unrelated schema changes, or could prevent the Payload runtime role from accessing its tables.
+Do not add phone numbers, billing addresses, shipping addresses, passwords, authentication, roles, marketing fields, order relationships, analytics fields, or sample customer data.
 
-4. Apply the migration only after the inspection passes.
+Customers must not use Payload authentication. Guest checkout does not mean customer accounts.
 
-5. If `AGENTS.md` does not already contain an equivalent permanent rule, add one concise database-safety rule:
+## Access Control
 
-   Any new table created in Supabase's exposed public schema must have RLS enabled in the same reviewed migration before application data is stored. Do not add anon or authenticated policies without explicit mission authorization.
+Collection create, read, update, and delete access must require an authenticated Payload user.
 
-Do not make any other changes to `AGENTS.md`.
+Anonymous REST callers must not be able to:
 
-## Security Verification
+- List customers
+- Read an individual customer
+- Create a customer
+- Update a customer
+- Delete a customer
 
-After applying the migration:
+Do not expose customer data through a custom public route. Future webhook operations will use explicitly trusted server-side Payload access in a later Unit.
 
-- Confirm RLS is enabled on every existing Payload-owned public table.
-- Confirm no permissive RLS policies were introduced.
-- Verify that Supabase `anon` and `authenticated` roles cannot read administrator or session records.
-- When possible, perform role-based checks inside transactions and roll them back.
-- Treat either zero visible rows or a permission-denied result as a successful denial.
-- Do not output existing row contents.
-- Confirm the Payload server database role can still access the tables.
-- Confirm the existing administrator record remains present without displaying its personal fields.
-- Do not create, update, or delete any administrator, session, or test record.
-- Confirm anonymous `/api/users` access remains denied.
-- Confirm GraphQL and GraphQL Playground routes remain unavailable.
+Register the collection in the existing Payload configuration without changing the Users security model.
 
-Supabase Auth roles and Payload administrator accounts are separate systems. Do not create Supabase Auth users or policies for Payload users.
+## Migration and RLS
 
-## Validation
+Generate one reviewed Payload migration for this collection.
 
-Run the repository's existing validation commands, including:
+Before applying it, confirm that it contains only changes directly required for:
 
-- Dependency-tree validation
-- Payload migration status
-- Payload type generation
-- ESLint
-- TypeScript without emit
-- Production build
-- Local route probes
-- Existing postcard scene validation
+- The new Customers table
+- Payload metadata or lock relationships required by the collection
+- Indexes and constraints required by the declared fields
+- Enabling RLS on the new Customers table
+- Migration bookkeeping
 
-Verify:
+The Customers table must have RLS enabled in the same migration, without FORCE RLS and without any permissive policies.
 
-- `/` still renders the existing postcard experience.
-- `/admin` remains available.
-- `/api/users` denies anonymous access.
-- No GraphQL route appears in the build or at runtime.
-- No dependency, environment, secret, certificate, frontend feature, style, or visual asset changed.
-- Temporary validation servers and browsers are stopped.
+All eight existing Payload tables must remain protected by RLS.
 
-## Stop Conditions
+Stop before applying if the migration deletes or rewrites data, disables RLS, modifies unrelated tables, changes Supabase-managed schemas, or contains unexplained schema operations.
 
-Stop and report before making or applying changes if:
+If the migration passes inspection, apply it normally. Do not execute a down migration.
 
-- The live Payload table set does not match the existing migration baseline.
-- The Payload runtime role is neither a table owner nor able to bypass non-forced RLS.
-- The migration contains destructive or unrelated operations.
-- Enabling RLS would prevent Payload Admin or REST from operating.
-- The task requires administrator credentials, a Supabase API key not already configured, a new dependency, or a change outside this Unit.
-- TLS or database identity verification fails.
+## Verification
 
-Never request or expose the administrator password.
+Verify all of the following:
+
+- The Customers collection is registered and included in generated Payload types.
+- The Customers table exists and contains zero rows.
+- RLS is enabled on Customers.
+- No Customer RLS policy exists.
+- Supabase `anon` and `authenticated` roles cannot read or write Customer records.
+- Security probes use synthetic non-personal values and are fully rolled back.
+- Anonymous `GET /api/customers` is denied.
+- Anonymous `POST /api/customers` is denied and creates no row.
+- Direct access-control evaluation denies anonymous callers and permits an authenticated Payload user context.
+- The existing administrator remains unchanged.
+- `/admin` remains operational.
+- Anonymous `/api/users` remains denied.
+- GraphQL and GraphQL Playground remain unavailable.
+- `/` and the existing postcard scene remain unchanged.
+
+Run the existing dependency, migration-status, import-map, type-generation, lint, TypeScript, production-build, route, and scene validations.
+
+Generated Payload types and migration files are expected to change. Dependencies, environment files, secrets, certificates, frontend features, styles, and assets must not change.
+
+Stop all temporary servers and browser processes after validation.
+
+## Excluded Work
+
+Do not implement:
+
+- Customer registration or login
+- Orders
+- Checkout intents
+- Addresses or phone collection
+- Uploads or Media
+- Stripe SDK, Checkout, webhooks, payments, or refunds
+- Email notifications
+- Public forms or frontend changes
+- Analytics or marketing attribution
+- Phase 2 Unit 2.2
+
+Do not modify `AGENTS.md` unless a blocking conflict is discovered and reported first.
 
 ## Completion Report
 
@@ -110,12 +132,12 @@ Report:
 
 - Outcome: COMPLETE or BLOCKED
 - Starting and ending HEAD
-- Tables inspected and their final RLS status
-- Runtime-role compatibility evidence
+- Collection fields and access behavior
 - Migration created and applied
-- Anonymous and authenticated role-denial evidence
-- Payload route and regression results
+- Tables and metadata changed
+- Customers RLS and API-role denial evidence
+- Customer row count
+- Regression results
 - Files changed
-- Database rows changed, if any
 - Final Git status
-- Confirmation that Phase 2 business collections were not started
+- Confirmation that no customer account, real PII, Stripe integration, or Unit 2.2 work was introduced

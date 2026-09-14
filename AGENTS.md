@@ -687,6 +687,7 @@ Do not hide critical order-creation logic across unrelated hooks.
 * Do not manually edit generated Payload types or generated import maps.
 * Regenerate them using supported commands.
 * Review database migrations before execution.
+* Any new table created in Supabase's exposed public schema must have RLS enabled in the same reviewed migration before application data is stored. Do not add `anon` or `authenticated` policies without explicit mission authorization.
 * Never rewrite an already-applied production migration.
 * Create a forward migration for later changes.
 * Ask before destructive schema operations or data backfills.

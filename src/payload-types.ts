@@ -69,6 +69,7 @@ export interface Config {
   collections: {
     users: User;
     customers: Customer;
+    orders: Order;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -78,6 +79,7 @@ export interface Config {
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
+    orders: OrdersSelect<false> | OrdersSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -156,6 +158,38 @@ export interface Customer {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orders".
+ */
+export interface Order {
+  id: number;
+  customer: number | Customer;
+  contactEmail: string;
+  amountCents: number;
+  currency: 'usd';
+  stripeCheckoutSessionId: string;
+  stripePaymentIntentId: string;
+  paidAt: string;
+  orderStatus: 'new' | 'in_progress' | 'ready_to_ship' | 'shipped' | 'completed' | 'cancelled';
+  paymentStatus: 'paid' | 'partially_refunded' | 'refunded' | 'disputed';
+  shippingAddress: {
+    recipientName: string;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    state?: string | null;
+    postalCode?: string | null;
+    country: string;
+  };
+  trackingCarrier?: string | null;
+  trackingNumber?: string | null;
+  trackingUrl?: string | null;
+  shippedAt?: string | null;
+  completedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -185,6 +219,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'customers';
         value: number | Customer;
+      } | null)
+    | ({
+        relationTo: 'orders';
+        value: number | Order;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -258,6 +296,39 @@ export interface CustomersSelect<T extends boolean = true> {
   fullName?: T;
   email?: T;
   stripeCustomerId?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orders_select".
+ */
+export interface OrdersSelect<T extends boolean = true> {
+  customer?: T;
+  contactEmail?: T;
+  amountCents?: T;
+  currency?: T;
+  stripeCheckoutSessionId?: T;
+  stripePaymentIntentId?: T;
+  paidAt?: T;
+  orderStatus?: T;
+  paymentStatus?: T;
+  shippingAddress?:
+    | T
+    | {
+        recipientName?: T;
+        line1?: T;
+        line2?: T;
+        city?: T;
+        state?: T;
+        postalCode?: T;
+        country?: T;
+      };
+  trackingCarrier?: T;
+  trackingNumber?: T;
+  trackingUrl?: T;
+  shippedAt?: T;
+  completedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

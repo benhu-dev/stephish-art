@@ -1,130 +1,188 @@
-# Phase 2 — Unit 2.1: Private Customers Collection
+# Phase 2 — Unit 2.2: Private Orders Collection
 
 ## Goal
 
-Create the minimal Customers collection needed for future guest checkout and Stripe integration.
+Add a private Orders collection for paid guest-checkout orders.
 
-Customers do not have accounts and cannot authenticate. The collection must be private, accessible only through authenticated Payload administration or future trusted server-side operations.
+This Unit defines the order, payment, fulfillment, and shipping snapshot schema only. It does not integrate Stripe, accept public orders, upload photos, or send email.
 
 ## Current Baseline
 
-- Phase 1 is complete and committed.
-- Payload 3.88.0 Admin and REST routes are operational.
-- GraphQL is disabled.
-- Development schema push is disabled.
-- All eight existing Payload tables have RLS enabled with no permissive policies.
+- Phase 1 is complete.
+- Phase 2 Unit 2.1 is committed.
+- The private Customers collection exists with `fullName`, normalized unique `email`, and optional unique `stripeCustomerId`.
+- Payload Admin and REST routes are operational.
+- GraphQL and development schema push are disabled.
+- Every existing Payload-owned table has non-forced RLS with no permissive policies.
 - One Payload administrator exists.
-- The public postcard experience is working.
+- The public postcard experience is unchanged.
 - The current `mission.md` modification is intentional and authorized.
 
-Record the starting HEAD and Git status. Stop if the Phase 1 changes were not committed or if unrelated uncommitted changes exist other than `mission.md`.
+Record the starting HEAD and Git status. Stop if Unit 2.1 was not committed or unrelated uncommitted changes exist other than `mission.md`.
 
-## Collection Contract
+## Orders Collection
 
-Add a `customers` collection with only these business fields:
+Add an `orders` collection with these fields.
 
-1. `fullName`
-   - Text
-   - Required
-   - Trim surrounding whitespace
-   - Maximum 150 characters
+### Customer and payment snapshot
 
-2. `email`
-   - Email
-   - Required
-   - Unique
-   - Normalize by trimming whitespace and converting to lowercase before validation or persistence
+- `customer`
+  - Required relationship to `customers`
 
-3. `stripeCustomerId`
-   - Text
-   - Optional
-   - Unique when present
-   - Intended for a future Stripe Customer identifier
-   - Do not integrate Stripe or create Stripe records in this Unit
+- `contactEmail`
+  - Required email
+  - Trimmed and lowercased before persistence
+  - Snapshot of the email used for this order
 
-Use `email` as the Admin title and show `fullName`, `email`, and `updatedAt` as the useful default columns.
+- `amountCents`
+  - Required integer
+  - Minimum 1
+  - Represents the final amount successfully paid through Stripe
+  - Must not enforce the storefront's configurable minimum payment amount
 
-Do not add phone numbers, billing addresses, shipping addresses, passwords, authentication, roles, marketing fields, order relationships, analytics fields, or sample customer data.
+- `currency`
+  - Required select field
+  - Only supported value in this Unit: `usd`
+  - Default: `usd`
 
-Customers must not use Payload authentication. Guest checkout does not mean customer accounts.
+- `stripeCheckoutSessionId`
+  - Required text
+  - Unique
 
-## Access Control
+- `stripePaymentIntentId`
+  - Required text
+  - Unique
 
-Collection create, read, update, and delete access must require an authenticated Payload user.
+- `paidAt`
+  - Required date and time
 
-Anonymous REST callers must not be able to:
+### Status
 
-- List customers
-- Read an individual customer
-- Create a customer
-- Update a customer
-- Delete a customer
+- `orderStatus`
+  - Required select
+  - Default: `new`
+  - Values:
+    - `new`
+    - `in_progress`
+    - `ready_to_ship`
+    - `shipped`
+    - `completed`
+    - `cancelled`
 
-Do not expose customer data through a custom public route. Future webhook operations will use explicitly trusted server-side Payload access in a later Unit.
+- `paymentStatus`
+  - Required select
+  - Default: `paid`
+  - Values:
+    - `paid`
+    - `partially_refunded`
+    - `refunded`
+    - `disputed`
 
-Register the collection in the existing Payload configuration without changing the Users security model.
+### Shipping snapshot
+
+Add a `shippingAddress` group containing:
+
+- `recipientName`: required text, maximum 150 characters
+- `line1`: required text, maximum 200 characters
+- `line2`: optional text, maximum 200 characters
+- `city`: required text, maximum 100 characters
+- `state`: optional text, maximum 100 characters
+- `postalCode`: optional text, maximum 32 characters
+- `country`: required two-letter uppercase country code
+
+This is an order-time snapshot. Do not add an address to Customers.
+
+### Fulfillment
+
+- `trackingCarrier`: optional text, maximum 100 characters
+- `trackingNumber`: optional text, maximum 200 characters
+- `trackingUrl`: optional URL
+- `shippedAt`: optional date and time
+- `completedAt`: optional date and time
+
+Do not add phone numbers, uploaded-photo fields, customer messages, internal notes, tax breakdowns, discounts, shipping fees, marketing attribution, or public order tokens in this Unit.
+
+Configure useful Admin columns for customer, contact email, order status, payment status, amount, and creation time. Disable document duplication if supported by the installed Payload version.
+
+## Access and Immutability
+
+Orders must use these collection access rules:
+
+- Read: authenticated Payload users only
+- Update: authenticated Payload users only
+- Create: denied through ordinary Admin and REST access
+- Delete: denied through ordinary Admin and REST access
+
+Future Stripe webhook code will create Orders through explicitly trusted server-side Payload Local API access in a later Unit.
+
+Prevent ordinary authenticated updates to these immutable payment fields:
+
+- `customer`
+- `contactEmail`
+- `amountCents`
+- `currency`
+- `stripeCheckoutSessionId`
+- `stripePaymentIntentId`
+- `paidAt`
+- `paymentStatus`
+
+Order status, corrected shipping information, tracking fields, `shippedAt`, and `completedAt` may be updated by an authenticated administrator.
+
+Confirm from the installed Payload 3.88.0 implementation or types that future trusted Local API operations using `overrideAccess` can bypass the declared access rules. Do not implement that future operation now.
+
+Also change Customers deletion access from authenticated-only to denied. Customer records referenced by financial orders must not be manually deleted. Do not change other Customers fields or access behavior.
 
 ## Migration and RLS
 
-Generate one reviewed Payload migration for this collection.
+Register Orders and generate one reviewed Payload migration.
 
-Before applying it, confirm that it contains only changes directly required for:
+The migration may contain only:
 
-- The new Customers table
-- Payload metadata or lock relationships required by the collection
-- Indexes and constraints required by the declared fields
-- Enabling RLS on the new Customers table
+- New structures required by Orders
+- Declared enums, fields, indexes, unique constraints, and customer relationship
+- Expected Payload lock or metadata relationships
+- RLS enablement for every newly created table
 - Migration bookkeeping
 
-The Customers table must have RLS enabled in the same migration, without FORCE RLS and without any permissive policies.
+Every new public-schema table must receive non-forced RLS in the same migration, with no permissive policy.
 
-All eight existing Payload tables must remain protected by RLS.
+Inspect the migration before applying it. Stop if it deletes or rewrites data, disables existing RLS, changes unrelated tables, introduces cascade deletion of Orders, modifies Supabase-managed schemas, or contains unexplained operations.
 
-Stop before applying if the migration deletes or rewrites data, disables RLS, modifies unrelated tables, changes Supabase-managed schemas, or contains unexplained schema operations.
-
-If the migration passes inspection, apply it normally. Do not execute a down migration.
+Apply the migration only after inspection passes. Never run the down migration.
 
 ## Verification
 
-Verify all of the following:
+Add focused acceptance coverage and verify:
 
-- The Customers collection is registered and included in generated Payload types.
-- The Customers table exists and contains zero rows.
-- RLS is enabled on Customers.
-- No Customer RLS policy exists.
-- Supabase `anon` and `authenticated` roles cannot read or write Customer records.
-- Security probes use synthetic non-personal values and are fully rolled back.
-- Anonymous `GET /api/customers` is denied.
-- Anonymous `POST /api/customers` is denied and creates no row.
-- Direct access-control evaluation denies anonymous callers and permits an authenticated Payload user context.
-- The existing administrator remains unchanged.
+- The exact Orders field and status contract.
+- Orders do not use authentication.
+- Anonymous and authenticated ordinary access cannot create or delete Orders.
+- Anonymous callers cannot read or update Orders.
+- Authenticated Payload context can read and update permitted fulfillment fields.
+- Immutable payment fields reject ordinary authenticated updates.
+- Customers can no longer be deleted through ordinary access.
+- Anonymous REST list, read, create, update, and delete requests return 403.
+- Denied requests create or change no rows.
+- Orders contains zero persistent rows.
+- Every new table has RLS enabled, FORCE disabled, and zero policies.
+- Supabase `anon` and `authenticated` roles cannot read or write Order data.
+- Rolled-back probes use only synthetic `.invalid` values and display no real records.
+- Existing Customers remains empty and protected.
+- The administrator remains untouched.
 - `/admin` remains operational.
-- Anonymous `/api/users` remains denied.
-- GraphQL and GraphQL Playground remain unavailable.
-- `/` and the existing postcard scene remain unchanged.
+- Anonymous `/api/customers` and `/api/users` remain denied.
+- GraphQL and its playground remain unavailable.
+- `/` and the postcard scene remain unchanged.
 
-Run the existing dependency, migration-status, import-map, type-generation, lint, TypeScript, production-build, route, and scene validations.
+Run the existing dependency, migration-status, import-map, Payload type-generation, lint, TypeScript, production-build, route, and scene checks. Stop all temporary processes afterward.
 
-Generated Payload types and migration files are expected to change. Dependencies, environment files, secrets, certificates, frontend features, styles, and assets must not change.
-
-Stop all temporary servers and browser processes after validation.
+Expected changes include the Orders collection, Customers access tightening, Payload config and types, one migration, and focused acceptance tests. Do not change dependencies, environment files, certificates, frontend code, styles, or assets.
 
 ## Excluded Work
 
-Do not implement:
+Do not implement Stripe SDK or webhooks, public checkout, Checkout Intents, Media or uploads, photo relationships, email, analytics, frontend forms, real orders, real PII, refund execution, or Unit 2.3.
 
-- Customer registration or login
-- Orders
-- Checkout intents
-- Addresses or phone collection
-- Uploads or Media
-- Stripe SDK, Checkout, webhooks, payments, or refunds
-- Email notifications
-- Public forms or frontend changes
-- Analytics or marketing attribution
-- Phase 2 Unit 2.2
-
-Do not modify `AGENTS.md` unless a blocking conflict is discovered and reported first.
+Do not modify `AGENTS.md` unless a blocking conflict is reported first.
 
 ## Completion Report
 
@@ -132,12 +190,11 @@ Report:
 
 - Outcome: COMPLETE or BLOCKED
 - Starting and ending HEAD
-- Collection fields and access behavior
-- Migration created and applied
-- Tables and metadata changed
-- Customers RLS and API-role denial evidence
-- Customer row count
-- Regression results
-- Files changed
-- Final Git status
-- Confirmation that no customer account, real PII, Stripe integration, or Unit 2.2 work was introduced
+- Final Orders schema and access behavior
+- Customers deletion change
+- Migration and database objects changed
+- RLS and API-role denial evidence
+- Order and Customer row counts
+- Validation results
+- Files changed and final Git status
+- Confirmation that no persistent test data, Stripe integration, uploads, email, frontend work, or Unit 2.3 work was introduced

@@ -7,7 +7,7 @@ export const Customers: CollectionConfig = {
   slug: "customers",
   access: {
     create: isAuthenticated,
-    delete: isAuthenticated,
+    delete: () => false,
     read: isAuthenticated,
     update: isAuthenticated,
   },

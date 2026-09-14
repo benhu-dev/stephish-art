@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { buildConfig } from "payload";
 
 import { Customers } from "./collections/Customers";
+import { Orders } from "./collections/Orders";
 import { Users } from "./collections/Users";
 
 const filename = fileURLToPath(import.meta.url);
@@ -28,7 +29,7 @@ export default buildConfig({
   admin: {
     user: Users.slug,
   },
-  collections: [Users, Customers],
+  collections: [Users, Customers, Orders],
   db: postgresAdapter({
     pool: {
       connectionString: databaseURL,

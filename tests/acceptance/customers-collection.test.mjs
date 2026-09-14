@@ -51,13 +51,13 @@ test("Customers uses the approved Admin presentation", () => {
   ]);
 });
 
-test("Customers denies anonymous CRUD and permits an authenticated Payload user", async () => {
+test("Customers denies anonymous access and permits authenticated create, read, and update", async () => {
   const anonymous = { req: { user: null } };
   const authenticated = {
     req: { user: { collection: "users", id: 1 } },
   };
 
-  for (const operation of ["create", "read", "update", "delete"]) {
+  for (const operation of ["create", "read", "update"]) {
     const access = Customers.access[operation];
 
     assert.equal(typeof access, "function");
@@ -68,4 +68,7 @@ test("Customers denies anonymous CRUD and permits an authenticated Payload user"
       `${operation} should permit an authenticated Payload user`,
     );
   }
+
+  assert.equal(await Customers.access.delete(anonymous), false);
+  assert.equal(await Customers.access.delete(authenticated), false);
 });

@@ -4,6 +4,7 @@ import * as migration_20260914_075822_add_customers from './20260914_075822_add_
 import * as migration_20260914_084256_add_orders from './20260914_084256_add_orders';
 import * as migration_20260914_090914_add_checkout_settings from './20260914_090914_add_checkout_settings';
 import * as migration_20260915_071331_add_order_uploads from './20260915_071331_add_order_uploads';
+import * as migration_20260915_102514_add_checkout_intents from './20260915_102514_add_checkout_intents';
 
 export const migrations = [
   {
@@ -34,6 +35,11 @@ export const migrations = [
   {
     up: migration_20260915_071331_add_order_uploads.up,
     down: migration_20260915_071331_add_order_uploads.down,
-    name: '20260915_071331_add_order_uploads'
+    name: '20260915_071331_add_order_uploads',
+  },
+  {
+    up: migration_20260915_102514_add_checkout_intents.up,
+    down: migration_20260915_102514_add_checkout_intents.down,
+    name: '20260915_102514_add_checkout_intents'
   },
 ];

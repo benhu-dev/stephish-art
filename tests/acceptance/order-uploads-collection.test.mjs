@@ -17,7 +17,10 @@ const completeEnvironment = {
 
 test("Order Uploads has the exact private upload contract", () => {
   assert.equal(OrderUploads.slug, "order-uploads");
-  assert.deepEqual(OrderUploads.fields, []);
+  assert.deepEqual(
+    OrderUploads.fields.map((field) => field.name),
+    ["checkoutIntent", "position"],
+  );
   assert.equal(OrderUploads.admin.group, "Orders");
   assert.deepEqual(OrderUploads.admin.defaultColumns, [
     "filename",
@@ -31,6 +34,32 @@ test("Order Uploads has the exact private upload contract", () => {
     mimeTypes: ["image/jpeg", "image/png", "image/webp"],
     pasteURL: false,
   });
+});
+
+test("Order Upload ownership is required, positioned, and unique per Intent", async () => {
+  const fields = Object.fromEntries(
+    OrderUploads.fields.map((field) => [field.name, field]),
+  );
+
+  assert.equal(fields.checkoutIntent.type, "relationship");
+  assert.equal(fields.checkoutIntent.relationTo, "checkout-intents");
+  assert.equal(fields.checkoutIntent.required, true);
+  assert.equal(fields.checkoutIntent.index, true);
+
+  assert.equal(fields.position.type, "number");
+  assert.equal(fields.position.required, true);
+  assert.equal(fields.position.min, 1);
+  assert.equal(fields.position.max, 3);
+  assert.equal(await fields.position.validate(1), true);
+  assert.equal(await fields.position.validate(2), true);
+  assert.equal(await fields.position.validate(3), true);
+  for (const value of [0, 4, 1.5, Number.NaN, "1"]) {
+    assert.notEqual(await fields.position.validate(value), true);
+  }
+
+  assert.deepEqual(OrderUploads.indexes, [
+    { fields: ["checkoutIntent", "position"], unique: true },
+  ]);
 });
 
 test("Order Uploads storage is fail-closed, server-side, path-style, and signed", () => {

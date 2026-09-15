@@ -70,17 +70,23 @@ export interface Config {
     users: User;
     customers: Customer;
     orders: Order;
+    'checkout-intents': CheckoutIntent;
     'order-uploads': OrderUpload;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
   };
-  collectionsJoins: {};
+  collectionsJoins: {
+    'checkout-intents': {
+      uploads: 'order-uploads';
+    };
+  };
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
     orders: OrdersSelect<false> | OrdersSelect<true>;
+    'checkout-intents': CheckoutIntentsSelect<false> | CheckoutIntentsSelect<true>;
     'order-uploads': OrderUploadsSelect<false> | OrderUploadsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -196,10 +202,31 @@ export interface Order {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "checkout-intents".
+ */
+export interface CheckoutIntent {
+  id: number;
+  status: 'draft' | 'checkout_created' | 'completed' | 'expired';
+  amountCents: number;
+  accessTokenHash: string;
+  expiresAt: string;
+  deleteAfter: string;
+  uploads?: {
+    docs?: (number | OrderUpload)[];
+    hasNextPage?: boolean;
+    totalDocs?: number;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "order-uploads".
  */
 export interface OrderUpload {
   id: number;
+  checkoutIntent: number | CheckoutIntent;
+  position: number;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -247,6 +274,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'orders';
         value: number | Order;
+      } | null)
+    | ({
+        relationTo: 'checkout-intents';
+        value: number | CheckoutIntent;
       } | null)
     | ({
         relationTo: 'order-uploads';
@@ -362,9 +393,25 @@ export interface OrdersSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "checkout-intents_select".
+ */
+export interface CheckoutIntentsSelect<T extends boolean = true> {
+  status?: T;
+  amountCents?: T;
+  accessTokenHash?: T;
+  expiresAt?: T;
+  deleteAfter?: T;
+  uploads?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "order-uploads_select".
  */
 export interface OrderUploadsSelect<T extends boolean = true> {
+  checkoutIntent?: T;
+  position?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;

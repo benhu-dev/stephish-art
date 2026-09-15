@@ -1,185 +1,216 @@
-# Phase 2 — Unit 2.4: Private Order Upload Storage
+# Mission: Phase 2 — Unit 2.5: Checkout Intent Data Model
 
 ## Goal
 
-Connect Payload to the existing private Supabase Storage bucket through its S3-compatible endpoint and add a private upload collection for future customer reference photos.
+Add a private Checkout Intents data model that securely associates a guest’s selected amount with up to three temporary reference-photo uploads before payment.
 
-This Unit verifies storage, file privacy, supported formats, and the 15 MB per-file limit. It does not expose customer uploads publicly or associate files with Orders yet.
+This Unit establishes the internal schema and security policy only. Do not add public checkout/upload endpoints, cookies, Stripe integration, scheduled cleanup, email, or frontend changes.
 
-## Current Baseline
+## Baseline and decisions
 
-- Phase 2 Unit 2.3 is committed.
-- Customers, Orders, and Checkout Settings exist and remain private.
-- `order-uploads` exists as a private Supabase Storage bucket.
-- The bucket allows only JPEG, PNG, and WebP files with a 15 MB per-file limit.
-- Required Supabase S3 values are present in the ignored `.env.local`.
-- Payload 3.88.0 is installed.
-- All existing Payload-owned public-schema tables have non-forced RLS and no permissive policies.
-- The current `mission.md` modification and ignored `.env.local` values are intentional and authorized.
+Confirm Unit 2.4 is committed before changing code.
 
-Record the starting HEAD and Git status. Never print, copy, rewrite, or expose environment values.
+The approved behavior is:
 
-Stop if Unit 2.3 was not committed or unrelated uncommitted files exist other than `mission.md`.
+- A Checkout Intent expires 24 hours after creation.
+- It becomes eligible for deletion 48 hours after creation.
+- Future same-browser recovery will use a Secure, HttpOnly, SameSite=Lax cookie.
+- The raw recovery token must never be stored in the database, URLs, logs, analytics, or browser storage.
+- The database stores only a SHA-256 hash of a cryptographically random 256-bit token.
+- A Checkout Intent stores no customer PII: no name, email, phone, address, IP address, or user-agent fingerprint.
+- One to three photos are required before checkout can begin.
+- Position 1 is the primary photo; positions 2 and 3 are supplemental.
+- Each file remains limited to 15 MiB.
+- Combined files are limited to 30 MiB.
+- The current Checkout Settings minimum is enforced later by the public checkout service. The schema minimum remains one cent so configuration changes do not invalidate existing Intents.
 
-## Storage Preflight
+Preserve the existing private Supabase Storage configuration and all completed collection behavior.
 
-Before changing code:
+## Required implementation
 
-- Confirm `.env.local` remains ignored and is not tracked.
-- Confirm all five required variables exist and are non-empty without printing their values:
-  - `SUPABASE_STORAGE_BUCKET`
-  - `SUPABASE_STORAGE_ENDPOINT`
-  - `SUPABASE_STORAGE_REGION`
-  - `SUPABASE_STORAGE_ACCESS_KEY_ID`
-  - `SUPABASE_STORAGE_SECRET_ACCESS_KEY`
-- Confirm the configured bucket is exactly `order-uploads`.
-- Confirm the endpoint uses HTTPS.
-- Validate access only against the configured bucket. Do not enumerate or modify other buckets.
-- Confirm through read-only Supabase metadata inspection that the bucket:
-  - Exists
-  - Is private
-  - Has a 15 MB file-size limit
-  - Allows only `image/jpeg`, `image/png`, and `image/webp`
-- Confirm the bucket contains no unexpected existing objects. If it is not empty, stop before modifying or deleting anything.
+### 1. Checkout policy and token utilities
 
-Do not create Storage RLS policies. Supabase S3 credentials are server-only and bypass Storage RLS.
+Add a server-only checkout-intent policy module containing one authoritative definition for:
 
-## Dependency
+- 24-hour active lifetime
+- 48-hour deletion eligibility from creation
+- maximum three uploads
+- 15 MiB per file, reusing the existing upload limit where practical
+- 30 MiB combined upload limit
 
-Install exactly:
+Add small server-only utilities that:
 
-`@payloadcms/storage-s3@3.88.0`
+- generate 32 random bytes using Node cryptography
+- encode the raw token safely for a future cookie
+- hash it with SHA-256 for database lookup
+- calculate `expiresAt` and `deleteAfter` from the same creation time
 
-First verify that this exact version exists and is compatible with the installed Payload 3.88.0 packages. Stop on peer conflicts or if additional direct dependencies are required.
+The raw token may only be returned to the immediate trusted caller. Never log or persist it.
 
-Expected dependency changes are limited to `package.json`, `package-lock.json`, and transitive dependencies required by the official adapter.
+Do not add a cookie or public route in this Unit.
 
-## Upload Collection
+### 2. Checkout Intents collection
 
-Add one upload-enabled collection:
+Add and register a collection with slug `checkout-intents`, grouped under Orders in Admin.
 
-- Slug: `order-uploads`
-- Admin group: `Orders`
-- Files required when creating a document
-- Accepted MIME types:
-  - `image/jpeg`
-  - `image/png`
-  - `image/webp`
-- Remote URL or pasted-URL uploads disabled
-- Local filesystem storage disabled
-- No image sizes, public derivatives, custom thumbnails, alt text, customer data, order relationship, checkout relationship, or other business fields
-- Useful Admin columns: filename, MIME type, file size, and creation time
+It must be read-only for authenticated Payload administrators through ordinary Payload access:
 
-Collection access:
+- read: authenticated Payload users only
+- create: denied
+- update: denied
+- delete: denied
+- duplication and bulk mutation disabled
 
-- Read: authenticated Payload users only
-- Create: authenticated Payload users only
-- Update: authenticated Payload users only
-- Delete: authenticated Payload users only
+Future trusted server services will use the Local API with an explicit access override.
 
-Future public uploads will use a controlled server-side flow in a later Unit. Do not make this collection anonymously writable.
+Add only these stored business fields:
 
-Configure the official S3 adapter using only the five server-side environment variables.
+- `status`
+  - required select
+  - default `draft`
+  - exact values: `draft`, `checkout_created`, `completed`, `expired`
+- `amountCents`
+  - required integer
+  - minimum 1
+- `accessTokenHash`
+  - required and unique
+  - exactly 64 lowercase hexadecimal characters
+  - hidden from Admin
+  - omitted from ordinary API responses through field access control
+  - immutable through ordinary access
+- `expiresAt`
+  - required date
+  - indexed
+- `deleteAfter`
+  - required date
+  - indexed
+  - must be later than `expiresAt`
 
-Requirements:
+Keep Payload timestamps enabled.
 
-- Use the configured private `order-uploads` bucket.
-- Use the configured Supabase S3 endpoint and region.
-- Use path-style S3 addressing if required by Supabase.
-- Keep Payload access control enabled.
-- Never use `disablePayloadAccessControl: true`.
-- Use signed downloads for all stored order uploads.
-- Do not generate a permanent public file URL.
-- Do not enable client uploads in this Unit.
-- Do not fall back to local storage when configuration is missing or incomplete.
-- Fail safely without including secret values in errors or logs.
+Add a virtual `uploads` Join field backed by `order-uploads.checkoutIntent`, sorted by `position`, limited to three, and unable to create uploads from the Join UI.
 
-If an existing `.env.example` is present, add variable names with blank placeholder values only. Do not create or modify any real environment value.
+Do not add Stripe IDs, Order relationships, customer fields, shipping fields, marketing data, analytics data, or plaintext tokens.
 
-Configure Payload's server upload limit to reject files larger than 15 MB if the installed Payload API supports this without affecting unrelated functionality.
+### 3. Order Upload ownership
 
-## Migration and RLS
+Extend `order-uploads` with:
 
-Register the collection and generate one reviewed Payload migration.
+- `checkoutIntent`
+  - required relationship to `checkout-intents`
+  - indexed
+- `position`
+  - required integer
+  - allowed values 1 through 3
+  - position 1 represents the primary photo
 
-Allow only:
+Add a compound unique index for `checkoutIntent` plus `position`.
 
-- The upload collection table and standard Payload upload metadata
-- Required indexes and lock metadata
-- RLS enablement for every new public-schema table
-- Migration bookkeeping
+The combination of the position range and unique index must prevent an Intent from owning more than three correctly positioned uploads. Do not store the relationship a second time.
 
-Every new table must receive non-forced RLS in the same migration and have zero permissive policies.
+Do not introduce database cascading deletion from Checkout Intents to upload rows. Future cleanup must delete each upload through Payload first so the storage adapter also deletes its Supabase object.
 
-Stop before applying if the migration changes existing application data, changes Customers, Orders, Checkout Settings, Users, disables RLS, modifies Supabase-managed schemas, or contains unexplained operations.
+Preserve the existing Order Upload MIME, file-size, private access, signed-download, S3, and local-storage settings.
 
-Apply only after inspection passes. Never run the down migration.
+The 30 MiB aggregate check cannot be guaranteed by this schema alone. Keep its policy constant and explicitly defer transactional aggregate enforcement to the future public upload service.
 
-## Verification
+### 4. Migration and RLS
 
-Add focused acceptance coverage and verify:
+Generate one migration only after reviewing the proposed schema changes.
 
-- Exact collection, MIME, access, and storage-adapter configuration.
-- Anonymous collection list, read, create, update, delete, and file download are denied.
-- Authenticated Payload access permits intended Admin operations.
-- Bucket remains private and has the expected bucket restrictions.
-- New database tables have RLS enabled, FORCE disabled, and zero policies.
-- Supabase `anon` and `authenticated` database roles cannot access upload metadata.
-- Adapter never exposes S3 credentials to client bundles, generated files, logs, reports, or Git.
-- No local upload directory or uploaded file is created in the repository.
+The migration may add only:
 
-Run a controlled end-to-end storage lifecycle test using a uniquely named tiny synthetic JPEG, PNG, or WebP fixture:
+- the Checkout Intents table and expected indexes
+- the required Order Upload ownership fields, foreign key, validation/index structures
+- expected Payload lock-relation metadata
+- the migration-ledger entry
 
-1. Upload through trusted Payload Local API access.
-2. Confirm one database record and one object appear in the configured bucket.
-3. Confirm ordinary anonymous metadata and file access are denied.
-4. Confirm an authorized signed download succeeds.
-5. Delete only the synthetic record through trusted Payload access.
-6. Confirm the adapter deletes its corresponding bucket object.
-7. Confirm the final database and bucket test-prefix counts return to zero.
+Enable ordinary, non-FORCED RLS on every new table in the same migration. Create no permissive policies.
 
-Also verify:
+Do not use schema push, disable existing RLS, rewrite existing records, modify unrelated tables, or add cascading deletion.
 
-- A disallowed non-image upload is rejected and persists nothing.
-- A file larger than 15 MB is rejected and persists nothing.
-- Test fixtures and temporary files are removed.
-- Customers and Orders remain empty.
-- Checkout Settings is unchanged.
-- The administrator remains untouched.
-- `/admin` and `/` work.
-- Existing protected APIs remain denied anonymously.
-- GraphQL routes remain unavailable.
-- The postcard scene remains unchanged.
+The `order_uploads` table is expected to be empty. Stop if it contains unexpected rows or the bucket contains unexpected objects.
 
-Run dependency, migration-status, import-map, Payload type-generation, lint, TypeScript, production-build, route, scene, and focused acceptance tests. Stop all temporary processes.
+## Acceptance criteria
 
-## Deferred Upload Rules
+Add focused red-first acceptance coverage proving:
 
-The intended customer workflow is one to three reference photos per checkout, with a 30 MB combined limit and the first photo treated as primary.
+- the exact Checkout Intents schema and access rules
+- no PII fields exist
+- token generation produces high-entropy, non-repeating raw tokens
+- hashes are deterministic 64-character lowercase hexadecimal values
+- raw tokens are never included in persisted create data
+- deadlines are exactly 24 and 48 hours from the same creation time
+- amount values are integers of at least one cent
+- upload positions outside 1–3 are rejected
+- duplicate positions for one Intent are rejected
+- the same position may be used by different Intents
+- the token hash is absent from ordinary administrator and anonymous API output
+- anonymous Checkout Intent CRUD is denied
+- authenticated administrators can list/read but cannot ordinarily create/update/delete
+- Supabase `anon` and `authenticated` database roles cannot read or mutate Checkout Intent or upload ownership data
+- all Payload tables retain non-FORCED RLS
+- GraphQL remains unavailable
 
-Do not implement those rules in this Unit because no Checkout Intent exists yet. This Unit enforces only the per-file format and 15 MB limit.
+Run one controlled synthetic Local API lifecycle:
 
-HEIC conversion will be handled by future frontend work. Do not accept HEIC directly.
+1. Generate a synthetic credential.
+2. Create one Checkout Intent through an explicit trusted Local API override.
+3. Upload one tiny synthetic PNG linked at position 1.
+4. Confirm the Join returns that upload and does not expose the token hash through ordinary access.
+5. Delete the upload through Payload so its Supabase object is removed.
+6. Delete the synthetic Intent through an explicit trusted override.
+7. Confirm final Checkout Intent, Order Upload, and bucket counts return to zero.
 
-## Excluded Work
+Delete only records and objects created by this test.
 
-Do not implement public or presigned customer-upload endpoints, client uploads, Checkout Intents, photo-to-Order relationships, Stripe, email, cleanup jobs, retention rules, frontend UI, HEIC conversion, real customer files, or Unit 2.5.
+Run dependency validation, migration status, Payload type and import-map generation, focused acceptance tests, lint, TypeScript, production build, route checks, GraphQL checks, and the existing postcard scene regression. Stop all temporary processes.
 
-Do not modify `AGENTS.md` unless a blocking conflict is reported first.
+## Exclusions
 
-## Completion Report
+Do not add:
 
-Report:
+- public Checkout Intent or upload endpoints
+- cookies or browser token storage
+- direct/client-presigned uploads
+- automatic cleanup jobs
+- Stripe Checkout or webhooks
+- Customer or Order creation
+- email
+- frontend forms
+- HEIC conversion
+- analytics
+- Phase 2 Unit 2.6 work
 
-- Outcome: COMPLETE or BLOCKED
-- Starting and ending HEAD
-- Storage preflight without secret values
-- Installed dependency result
-- Collection and adapter configuration
-- Migration and RLS evidence
-- Anonymous-access and signed-download evidence
-- Synthetic upload/delete lifecycle result
-- Final database and bucket object counts
-- Validation results
-- Files changed and final Git status
-- Confirmation that no secrets, real uploads, public endpoint, local fallback, Checkout Intent, Stripe, frontend work, or Unit 2.5 was introduced
+Do not change dependencies, environment files, Supabase bucket settings, AGENTS.md, frontend code, artwork, or assets unless an actual blocker requires approval.
+
+## Stop conditions
+
+Stop and report BLOCKED if:
+
+- the repository contains unexpected pre-existing changes beyond the authorized `mission.md`
+- Unit 2.4 is not committed
+- existing upload rows or unexpected bucket objects are present
+- the migration includes destructive or unrelated operations
+- the ownership constraints cannot be represented safely
+- any test would require deleting non-synthetic data or objects
+- credentials would need to be printed, exposed, or committed
+- completing the Unit requires a public endpoint, cookie, Stripe, or cleanup job
+
+## Completion report
+
+Report COMPLETE or BLOCKED and include:
+
+- starting and ending HEAD
+- changed files
+- exact collection fields and access behavior
+- token/deadline test evidence
+- migration and RLS inspection
+- ownership/index evidence
+- synthetic lifecycle and cleanup results
+- final database and bucket counts
+- regression results
+- final Git status
+- confirmation that no PII, raw token, secret, public endpoint, cookie, Stripe integration, or persistent test data was introduced
+
+Do not commit or push.

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { buildConfig } from "payload";
 
 import { Customers } from "./collections/Customers";
+import { CheckoutIntents } from "./collections/CheckoutIntents";
 import { OrderUploads } from "./collections/OrderUploads";
 import { Orders } from "./collections/Orders";
 import { Users } from "./collections/Users";
@@ -36,7 +37,7 @@ export default buildConfig({
   admin: {
     user: Users.slug,
   },
-  collections: [Users, Customers, Orders, OrderUploads],
+  collections: [Users, Customers, Orders, CheckoutIntents, OrderUploads],
   globals: [CheckoutSettings],
   db: postgresAdapter({
     pool: {

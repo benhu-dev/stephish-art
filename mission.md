@@ -1,136 +1,169 @@
-# Phase 2 — Unit 2.3: Private Checkout Settings Global
+# Phase 2 — Unit 2.4: Private Order Upload Storage
 
 ## Goal
 
-Create one private Payload Global named Checkout Settings as the authoritative source for the storefront's configurable minimum payment amount.
+Connect Payload to the existing private Supabase Storage bucket through its S3-compatible endpoint and add a private upload collection for future customer reference photos.
 
-The default must be 500 cents ($5.00). Administrators must be able to change it later through Payload Admin without changing code or redeploying.
-
-This Unit creates the setting only. It does not implement a public settings endpoint or enforce the amount in Checkout yet.
+This Unit verifies storage, file privacy, supported formats, and the 15 MB per-file limit. It does not expose customer uploads publicly or associate files with Orders yet.
 
 ## Current Baseline
 
-- Phase 2 Unit 2.2 is committed.
-- Private Customers and Orders collections exist.
-- Orders can only be created through future trusted server-side access.
-- `Orders.amountCents` accepts positive integer cents with a schema minimum of 1 and does not contain the storefront's $5 business rule.
-- Payload Admin and REST are operational.
-- GraphQL and development schema push are disabled.
-- All existing Payload-owned tables have non-forced RLS with no permissive policies.
-- The current `mission.md` modification is intentional and authorized.
+- Phase 2 Unit 2.3 is committed.
+- Customers, Orders, and Checkout Settings exist and remain private.
+- `order-uploads` exists as a private Supabase Storage bucket.
+- The bucket allows only JPEG, PNG, and WebP files with a 15 MB per-file limit.
+- Required Supabase S3 values are present in the ignored `.env.local`.
+- Payload 3.88.0 is installed.
+- All existing Payload-owned public-schema tables have non-forced RLS and no permissive policies.
+- The current `mission.md` modification and ignored `.env.local` values are intentional and authorized.
 
-Record the starting HEAD and Git status. Stop if Unit 2.2 was not committed or unrelated uncommitted changes exist other than `mission.md`.
+Record the starting HEAD and Git status. Never print, copy, rewrite, or expose environment values.
 
-## Global Contract
+Stop if Unit 2.3 was not committed or unrelated uncommitted files exist other than `mission.md`.
 
-Add a Payload Global with:
+## Storage Preflight
 
-- Slug: `checkout-settings`
-- Label: `Checkout Settings`
-- Admin group: `Settings`, if supported without custom components
+Before changing code:
 
-Add exactly one field:
+- Confirm `.env.local` remains ignored and is not tracked.
+- Confirm all five required variables exist and are non-empty without printing their values:
+  - `SUPABASE_STORAGE_BUCKET`
+  - `SUPABASE_STORAGE_ENDPOINT`
+  - `SUPABASE_STORAGE_REGION`
+  - `SUPABASE_STORAGE_ACCESS_KEY_ID`
+  - `SUPABASE_STORAGE_SECRET_ACCESS_KEY`
+- Confirm the configured bucket is exactly `order-uploads`.
+- Confirm the endpoint uses HTTPS.
+- Validate access only against the configured bucket. Do not enumerate or modify other buckets.
+- Confirm through read-only Supabase metadata inspection that the bucket:
+  - Exists
+  - Is private
+  - Has a 15 MB file-size limit
+  - Allows only `image/jpeg`, `image/png`, and `image/webp`
+- Confirm the bucket contains no unexpected existing objects. If it is not empty, stop before modifying or deleting anything.
 
-- Name: `minimumAmountCents`
-- Label: `Minimum Payment Amount (cents)`
-- Type: number
-- Required: true
-- Default: 500
-- Minimum: 1
-- Validation:
-  - Must be a finite integer
-  - Must be at least 1
-- Admin description:
-  - `Enter an integer number of cents. 500 = $5.00.`
+Do not create Storage RLS policies. Supabase S3 credentials are server-only and bypass Storage RLS.
 
-Do not add currency, maximum amount, taxes, shipping fees, product prices, feature flags, Stripe IDs, secrets, or other checkout settings in this Unit.
+## Dependency
 
-Register the Global in the existing Payload configuration.
+Install exactly:
 
-## Access
+`@payloadcms/storage-s3@3.88.0`
 
-Global read and update access must require an authenticated Payload user.
+First verify that this exact version exists and is compatible with the installed Payload 3.88.0 packages. Stop on peer conflicts or if additional direct dependencies are required.
 
-Anonymous callers must not be able to read or update the setting through Payload REST.
+Expected dependency changes are limited to `package.json`, `package-lock.json`, and transitive dependencies required by the official adapter.
 
-Future trusted server-side code will read this Global through Payload Local API using explicit trusted access. Do not implement that checkout code now.
+## Upload Collection
 
-Do not expose this Global directly to the public frontend. A future controlled endpoint may return only safe storefront settings.
+Add one upload-enabled collection:
 
-## Historical Order Safety
+- Slug: `order-uploads`
+- Admin group: `Orders`
+- Files required when creating a document
+- Accepted MIME types:
+  - `image/jpeg`
+  - `image/png`
+  - `image/webp`
+- Remote URL or pasted-URL uploads disabled
+- Local filesystem storage disabled
+- No image sizes, public derivatives, custom thumbnails, alt text, customer data, order relationship, checkout relationship, or other business fields
+- Useful Admin columns: filename, MIME type, file size, and creation time
 
-Do not change the Orders schema or apply the configurable minimum to stored Orders.
+Collection access:
 
-Confirm that:
+- Read: authenticated Payload users only
+- Create: authenticated Payload users only
+- Update: authenticated Payload users only
+- Delete: authenticated Payload users only
 
-- `Orders.amountCents` still has a schema minimum of 1.
-- Existing historical Orders would remain valid if the Admin changes the storefront minimum.
-- The Checkout Settings value is not copied into or retroactively applied to existing Orders in this Unit.
+Future public uploads will use a controlled server-side flow in a later Unit. Do not make this collection anonymously writable.
+
+Configure the official S3 adapter using only the five server-side environment variables.
+
+Requirements:
+
+- Use the configured private `order-uploads` bucket.
+- Use the configured Supabase S3 endpoint and region.
+- Use path-style S3 addressing if required by Supabase.
+- Keep Payload access control enabled.
+- Never use `disablePayloadAccessControl: true`.
+- Use signed downloads for all stored order uploads.
+- Do not generate a permanent public file URL.
+- Do not enable client uploads in this Unit.
+- Do not fall back to local storage when configuration is missing or incomplete.
+- Fail safely without including secret values in errors or logs.
+
+If an existing `.env.example` is present, add variable names with blank placeholder values only. Do not create or modify any real environment value.
+
+Configure Payload's server upload limit to reject files larger than 15 MB if the installed Payload API supports this without affecting unrelated functionality.
 
 ## Migration and RLS
 
-Generate one reviewed Payload migration.
+Register the collection and generate one reviewed Payload migration.
 
-It may contain only:
+Allow only:
 
-- Structures required by Checkout Settings
-- Expected Payload metadata or lock relationships
-- Required indexes or constraints
-- RLS enablement for every newly created public-schema table
+- The upload collection table and standard Payload upload metadata
+- Required indexes and lock metadata
+- RLS enablement for every new public-schema table
 - Migration bookkeeping
 
-Every new table must receive non-forced RLS in the same migration and must have no permissive policies.
+Every new table must receive non-forced RLS in the same migration and have zero permissive policies.
 
-Inspect the migration before applying it. Stop if it rewrites data, changes Customers or Orders, disables existing RLS, modifies unrelated or Supabase-managed schemas, or contains unexplained operations.
+Stop before applying if the migration changes existing application data, changes Customers, Orders, Checkout Settings, Users, disables RLS, modifies Supabase-managed schemas, or contains unexplained operations.
 
-Apply the migration only after inspection passes. Do not execute the down migration.
+Apply only after inspection passes. Never run the down migration.
 
 ## Verification
 
-Add focused red-first acceptance coverage and verify:
+Add focused acceptance coverage and verify:
 
-- The exact Global and one-field contract.
-- Default value is 500.
-- Values 1 and 500 pass validation.
-- Zero, negative, fractional, non-finite, string, null, and missing values are rejected as applicable.
-- Anonymous direct read and update access are denied.
-- Authenticated Payload context can read and update.
-- Anonymous REST read and update attempts are denied.
-- Denied requests do not persist a value.
-- Trusted Local API can resolve the Global contract without implementing checkout behavior.
-- All new database tables have RLS enabled, FORCE disabled, and zero policies.
-- Supabase `anon` and `authenticated` roles cannot read or modify the setting.
-- Security probes are rolled back and persist no synthetic data.
-- Orders and Customers row counts remain zero.
-- The existing administrator is unchanged.
-- `/admin` and `/` remain operational.
-- Anonymous Users, Customers, and Orders APIs remain denied.
-- GraphQL and GraphQL Playground remain unavailable.
+- Exact collection, MIME, access, and storage-adapter configuration.
+- Anonymous collection list, read, create, update, delete, and file download are denied.
+- Authenticated Payload access permits intended Admin operations.
+- Bucket remains private and has the expected bucket restrictions.
+- New database tables have RLS enabled, FORCE disabled, and zero policies.
+- Supabase `anon` and `authenticated` database roles cannot access upload metadata.
+- Adapter never exposes S3 credentials to client bundles, generated files, logs, reports, or Git.
+- No local upload directory or uploaded file is created in the repository.
+
+Run a controlled end-to-end storage lifecycle test using a uniquely named tiny synthetic JPEG, PNG, or WebP fixture:
+
+1. Upload through trusted Payload Local API access.
+2. Confirm one database record and one object appear in the configured bucket.
+3. Confirm ordinary anonymous metadata and file access are denied.
+4. Confirm an authorized signed download succeeds.
+5. Delete only the synthetic record through trusted Payload access.
+6. Confirm the adapter deletes its corresponding bucket object.
+7. Confirm the final database and bucket test-prefix counts return to zero.
+
+Also verify:
+
+- A disallowed non-image upload is rejected and persists nothing.
+- A file larger than 15 MB is rejected and persists nothing.
+- Test fixtures and temporary files are removed.
+- Customers and Orders remain empty.
+- Checkout Settings is unchanged.
+- The administrator remains untouched.
+- `/admin` and `/` work.
+- Existing protected APIs remain denied anonymously.
+- GraphQL routes remain unavailable.
 - The postcard scene remains unchanged.
 
-Run the existing dependency, migration-status, import-map, Payload type-generation, lint, TypeScript, production-build, route, and scene validations. Stop all temporary processes afterward.
+Run dependency, migration-status, import-map, Payload type-generation, lint, TypeScript, production-build, route, scene, and focused acceptance tests. Stop all temporary processes.
 
-Expected changes are limited to the Checkout Settings Global, Payload config and generated types, one migration, and focused acceptance tests.
+## Deferred Upload Rules
 
-Do not change dependencies, environment files, certificates, Customers, Orders, Users, frontend code, styles, or assets.
+The intended customer workflow is one to three reference photos per checkout, with a 30 MB combined limit and the first photo treated as primary.
+
+Do not implement those rules in this Unit because no Checkout Intent exists yet. This Unit enforces only the per-file format and 15 MB limit.
+
+HEIC conversion will be handled by future frontend work. Do not accept HEIC directly.
 
 ## Excluded Work
 
-Do not implement:
-
-- Checkout API routes
-- Public settings routes
-- Minimum-amount enforcement for public requests
-- Stripe SDK, Checkout Sessions, webhooks, payments, or refunds
-- Maximum payment amount
-- Currency configuration
-- Customers or Orders changes
-- Media or uploads
-- Email
-- Frontend forms
-- Analytics
-- Persistent settings or test data created outside normal future Admin use
-- Unit 2.4
+Do not implement public or presigned customer-upload endpoints, client uploads, Checkout Intents, photo-to-Order relationships, Stripe, email, cleanup jobs, retention rules, frontend UI, HEIC conversion, real customer files, or Unit 2.5.
 
 Do not modify `AGENTS.md` unless a blocking conflict is reported first.
 
@@ -140,11 +173,13 @@ Report:
 
 - Outcome: COMPLETE or BLOCKED
 - Starting and ending HEAD
-- Final Global field and access contract
-- Migration and database objects changed
-- RLS and API-role denial evidence
-- Whether any Global row was persisted
-- Orders and Customers row counts
+- Storage preflight without secret values
+- Installed dependency result
+- Collection and adapter configuration
+- Migration and RLS evidence
+- Anonymous-access and signed-download evidence
+- Synthetic upload/delete lifecycle result
+- Final database and bucket object counts
 - Validation results
 - Files changed and final Git status
-- Confirmation that no Checkout API, Stripe integration, frontend work, persistent test data, or Unit 2.4 work was introduced
+- Confirmation that no secrets, real uploads, public endpoint, local fallback, Checkout Intent, Stripe, frontend work, or Unit 2.5 was introduced

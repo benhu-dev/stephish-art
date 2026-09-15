@@ -11,6 +11,23 @@ npm run dev
 
 Open http://localhost:3000. For a production preview, run `npm run build` followed by `npm run start`. In PowerShell environments that block `npm.ps1`, use `npm.cmd`.
 
+Payload requires `DATABASE_URL` and `PAYLOAD_SECRET`. Private order uploads also
+require these server-only variable names in `.env.local`:
+
+```text
+SUPABASE_STORAGE_BUCKET
+SUPABASE_STORAGE_ENDPOINT
+SUPABASE_STORAGE_REGION
+SUPABASE_STORAGE_ACCESS_KEY_ID
+SUPABASE_STORAGE_SECRET_ACCESS_KEY
+```
+
+The configured bucket must be the private `order-uploads` bucket. Payload accepts
+JPEG, PNG, and WebP uploads up to 15 MiB, stores no local copy, and serves files
+only through authenticated, signed downloads. Apply reviewed migrations with
+`npm run payload -- migrate`; inspect status with
+`npm run payload -- migrate:status`.
+
 ## Scene and timing
 
 The machine, camera, and park stay fixed in a sticky viewport across a 360svh scroll container. Scroll down to insert a coin and print a postcard; scroll up to reverse. Anime.js controls the timeline using its [scroll synchronization](https://animejs.com/documentation/events/onscroll/scrollobserver-synchronisation-modes/).

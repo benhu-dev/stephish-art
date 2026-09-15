@@ -3,6 +3,7 @@ import * as migration_20260914_071449_enable_payload_rls from './20260914_071449
 import * as migration_20260914_075822_add_customers from './20260914_075822_add_customers';
 import * as migration_20260914_084256_add_orders from './20260914_084256_add_orders';
 import * as migration_20260914_090914_add_checkout_settings from './20260914_090914_add_checkout_settings';
+import * as migration_20260915_071331_add_order_uploads from './20260915_071331_add_order_uploads';
 
 export const migrations = [
   {
@@ -28,6 +29,11 @@ export const migrations = [
   {
     up: migration_20260914_090914_add_checkout_settings.up,
     down: migration_20260914_090914_add_checkout_settings.down,
-    name: '20260914_090914_add_checkout_settings'
+    name: '20260914_090914_add_checkout_settings',
+  },
+  {
+    up: migration_20260915_071331_add_order_uploads.up,
+    down: migration_20260915_071331_add_order_uploads.down,
+    name: '20260915_071331_add_order_uploads'
   },
 ];

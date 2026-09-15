@@ -1,12 +1,18 @@
 import { postgresAdapter } from "@payloadcms/db-postgres";
+import { s3Storage } from "@payloadcms/storage-s3";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildConfig } from "payload";
 
 import { Customers } from "./collections/Customers";
+import { OrderUploads } from "./collections/OrderUploads";
 import { Orders } from "./collections/Orders";
 import { Users } from "./collections/Users";
 import { CheckoutSettings } from "./globals/CheckoutSettings";
+import {
+  getOrderUploadStorageOptions,
+  ORDER_UPLOAD_MAX_FILE_SIZE_BYTES,
+} from "./server/storage/orderUploadStorage";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -30,7 +36,7 @@ export default buildConfig({
   admin: {
     user: Users.slug,
   },
-  collections: [Users, Customers, Orders],
+  collections: [Users, Customers, Orders, OrderUploads],
   globals: [CheckoutSettings],
   db: postgresAdapter({
     pool: {
@@ -41,8 +47,15 @@ export default buildConfig({
   graphQL: {
     disable: true,
   },
+  plugins: [s3Storage(getOrderUploadStorageOptions())],
   secret: payloadSecret,
   typescript: {
     outputFile: path.resolve(dirname, "payload-types.ts"),
+  },
+  upload: {
+    abortOnLimit: true,
+    limits: {
+      fileSize: ORDER_UPLOAD_MAX_FILE_SIZE_BYTES,
+    },
   },
 });

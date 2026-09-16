@@ -10,6 +10,7 @@ import { OrderUploads } from "./collections/OrderUploads";
 import { Orders } from "./collections/Orders";
 import { Users } from "./collections/Users";
 import { CheckoutSettings } from "./globals/CheckoutSettings";
+import { storefrontCheckoutIntentEndpoints } from "./server/storefront/checkoutIntentEndpoints";
 import {
   getOrderUploadStorageOptions,
   ORDER_UPLOAD_MAX_FILE_SIZE_BYTES,
@@ -38,6 +39,7 @@ export default buildConfig({
     user: Users.slug,
   },
   collections: [Users, Customers, Orders, CheckoutIntents, OrderUploads],
+  endpoints: storefrontCheckoutIntentEndpoints,
   globals: [CheckoutSettings],
   db: postgresAdapter({
     pool: {
@@ -56,7 +58,13 @@ export default buildConfig({
   upload: {
     abortOnLimit: true,
     limits: {
-      fileSize: ORDER_UPLOAD_MAX_FILE_SIZE_BYTES,
+      fieldSize: 1024,
+      fields: 1,
+      // Busboy emits its limit event at equality, so the exclusive parser
+      // ceiling is one byte above the inclusive 15 MiB application limit.
+      fileSize: ORDER_UPLOAD_MAX_FILE_SIZE_BYTES + 1,
+      files: 1,
+      parts: 2,
     },
   },
 });

@@ -1,216 +1,259 @@
-# Mission: Phase 2 — Unit 2.5: Checkout Intent Data Model
+# Phase 2 — Unit 2.6: Controlled Checkout Intent and Upload API
 
 ## Goal
 
-Add a private Checkout Intents data model that securely associates a guest’s selected amount with up to three temporary reference-photo uploads before payment.
+Add the controlled storefront API for creating or resuming a Checkout Intent and managing its private reference-photo uploads.
 
-This Unit establishes the internal schema and security policy only. Do not add public checkout/upload endpoints, cookies, Stripe integration, scheduled cleanup, email, or frontend changes.
+This Unit makes the backend workflow callable by the future frontend. It does not add frontend UI, Stripe, Orders, Customers, email, or cleanup jobs.
 
-## Baseline and decisions
+## Baseline
 
-Confirm Unit 2.4 is committed before changing code.
+* Phase 2 Unit 2.5 is committed at `f6dba58`.
+* Checkout Intents, Order Uploads, Checkout Settings, private Supabase Storage, token helpers, expiry policy, and database constraints already exist.
+* Direct anonymous Payload collection access remains denied.
+* The working tree must be clean except for the authorized `mission.md` change.
+* `.env.local` remains ignored and must never be printed or modified.
 
-The approved behavior is:
+Record starting HEAD and Git status. Stop on unrelated changes.
 
-- A Checkout Intent expires 24 hours after creation.
-- It becomes eligible for deletion 48 hours after creation.
-- Future same-browser recovery will use a Secure, HttpOnly, SameSite=Lax cookie.
-- The raw recovery token must never be stored in the database, URLs, logs, analytics, or browser storage.
-- The database stores only a SHA-256 hash of a cryptographically random 256-bit token.
-- A Checkout Intent stores no customer PII: no name, email, phone, address, IP address, or user-agent fingerprint.
-- One to three photos are required before checkout can begin.
-- Position 1 is the primary photo; positions 2 and 3 are supplemental.
-- Each file remains limited to 15 MiB.
-- Combined files are limited to 30 MiB.
-- The current Checkout Settings minimum is enforced later by the public checkout service. The schema minimum remains one cent so configuration changes do not invalidate existing Intents.
+## Storefront Endpoints
 
-Preserve the existing private Supabase Storage configuration and all completed collection behavior.
+Implement these as Payload root-level custom endpoints under the existing `/api` prefix:
 
-## Required implementation
+* `POST /api/storefront/checkout-intents`
+* `GET /api/storefront/checkout-intents/current`
+* `POST /api/storefront/checkout-intents/current/uploads`
+* `DELETE /api/storefront/checkout-intents/current/uploads/:uploadId`
 
-### 1. Checkout policy and token utilities
+Do not modify or replace Payload’s normal collection REST routes.
 
-Add a server-only checkout-intent policy module containing one authoritative definition for:
+All responses must use `Cache-Control: no-store`.
 
-- 24-hour active lifetime
-- 48-hour deletion eligibility from creation
-- maximum three uploads
-- 15 MiB per file, reusing the existing upload limit where practical
-- 30 MiB combined upload limit
+### Create or Resume Intent
 
-Add small server-only utilities that:
+`POST /api/storefront/checkout-intents` accepts JSON containing exactly:
 
-- generate 32 random bytes using Node cryptography
-- encode the raw token safely for a future cookie
-- hash it with SHA-256 for database lookup
-- calculate `expiresAt` and `deleteAfter` from the same creation time
+* `amountCents`: finite positive integer
 
-The raw token may only be returned to the immediate trusted caller. Never log or persist it.
+Read the current `minimumAmountCents` from Checkout Settings through trusted server-side Payload access. Do not hardcode 500 in the endpoint.
 
-Do not add a cookie or public route in this Unit.
+Reject missing, string, fractional, non-finite, unsafe, or below-minimum values without persisting anything.
 
-### 2. Checkout Intents collection
+If the request has a valid cookie for an unexpired `draft` Intent:
 
-Add and register a collection with slug `checkout-intents`, grouped under Orders in Admin.
+* Reuse the same Intent.
+* Update only `amountCents`.
+* Do not rotate the token.
+* Do not extend `expiresAt` or `deleteAfter`.
 
-It must be read-only for authenticated Payload administrators through ordinary Payload access:
+Otherwise:
 
-- read: authenticated Payload users only
-- create: denied
-- update: denied
-- delete: denied
-- duplication and bulk mutation disabled
+* Generate credentials using the existing Unit 2.5 helper.
+* Create a `draft` Intent with the existing 24-hour expiry and 48-hour deletion policy.
+* Store only the token hash.
+* Set the raw token only inside the protected cookie.
 
-Future trusted server services will use the Local API with an explicit access override.
+Return `201` for a new Intent and `200` for a resumed Intent.
 
-Add only these stored business fields:
+### Session Cookie
 
-- `status`
-  - required select
-  - default `draft`
-  - exact values: `draft`, `checkout_created`, `completed`, `expired`
-- `amountCents`
-  - required integer
-  - minimum 1
-- `accessTokenHash`
-  - required and unique
-  - exactly 64 lowercase hexadecimal characters
-  - hidden from Admin
-  - omitted from ordinary API responses through field access control
-  - immutable through ordinary access
-- `expiresAt`
-  - required date
-  - indexed
-- `deleteAfter`
-  - required date
-  - indexed
-  - must be later than `expiresAt`
+Use one cookie named:
 
-Keep Payload timestamps enabled.
+`stephish_checkout_intent`
 
-Add a virtual `uploads` Join field backed by `order-uploads.checkoutIntent`, sorted by `position`, limited to three, and unable to create uploads from the Join UI.
+The cookie must:
 
-Do not add Stripe IDs, Order relationships, customer fields, shipping fields, marketing data, analytics data, or plaintext tokens.
+* Be `HttpOnly`
+* Use `SameSite=Strict`
+* Use `Secure` in production
+* Have no `Domain`
+* Use path `/api/storefront/checkout-intents`
+* Expire no later than the Intent
+* Contain a versioned internal representation of the Intent identifier and raw token
+* Never contain the token hash or other data
 
-### 3. Order Upload ownership
+Never return the raw token in JSON, headers other than `Set-Cookie`, logs, errors, generated files, or client-visible code.
 
-Extend `order-uploads` with:
+Missing, malformed, unknown, expired, or incorrect credentials must receive a generic unauthorized response without revealing whether an Intent ID exists. Clear malformed or expired cookies.
 
-- `checkoutIntent`
-  - required relationship to `checkout-intents`
-  - indexed
-- `position`
-  - required integer
-  - allowed values 1 through 3
-  - position 1 represents the primary photo
+### Safe Response
 
-Add a compound unique index for `checkoutIntent` plus `position`.
+Create/resume and current-state responses may return only:
 
-The combination of the position range and unique index must prevent an Intent from owning more than three correctly positioned uploads. Do not store the relationship a second time.
+* `status`
+* `amountCents`
+* `expiresAt`
+* Upload entries containing `id`, `position`, `mimeType`, and `sizeBytes`
+* Current safe limits:
 
-Do not introduce database cascading deletion from Checkout Intents to upload rows. Future cleanup must delete each upload through Payload first so the storage adapter also deletes its Supabase object.
+  * `minimumAmountCents`
+  * `maxFiles: 3`
+  * `maxFileBytes: 15728640`
+  * `maxTotalBytes: 31457280`
+  * JPEG, PNG, and WebP MIME types
 
-Preserve the existing Order Upload MIME, file-size, private access, signed-download, S3, and local-storage settings.
+Do not return:
 
-The 30 MiB aggregate check cannot be guaranteed by this schema alone. Keep its policy constant and explicitly defer transactional aggregate enforcement to the future public upload service.
+* Checkout Intent ID
+* Raw token or token hash
+* `deleteAfter`
+* Storage keys, filenames, bucket names, credentials, permanent URLs, or signed URLs
+* Internal Payload metadata
 
-### 4. Migration and RLS
+`GET /current` must require a valid cookie and must not mutate or extend the Intent.
 
-Generate one migration only after reviewing the proposed schema changes.
+## Controlled Upload
 
-The migration may add only:
+`POST /current/uploads` accepts multipart form data containing exactly:
 
-- the Checkout Intents table and expected indexes
-- the required Order Upload ownership fields, foreign key, validation/index structures
-- expected Payload lock-relation metadata
-- the migration-ledger entry
+* One file
+* One integer `position` from 1 through 3
 
-Enable ordinary, non-FORCED RLS on every new table in the same migration. Create no permissive policies.
+Use Payload’s supported multipart/file parsing and the existing 15 MiB server limit.
 
-Do not use schema push, disable existing RLS, rewrite existing records, modify unrelated tables, or add cascading deletion.
+Validate on the server:
 
-The `order_uploads` table is expected to be empty. Stop if it contains unexpected rows or the bucket contains unexpected objects.
+* The Intent credential is valid.
+* The Intent is `draft` and unexpired.
+* Position is 1, 2, or 3.
+* The position is not already occupied.
+* The Intent has fewer than three uploads.
+* The file is non-empty and no larger than 15 MiB.
+* Existing files plus the incoming file do not exceed 30 MiB.
+* Declared MIME type and detected content are both JPEG, PNG, or WebP and agree.
+* The file is a decodable image with valid dimensions.
+* Decoded pixel count does not exceed 100 megapixels.
 
-## Acceptance criteria
+Use the existing image library if already installed. Do not add a dependency solely for validation.
 
-Add focused red-first acceptance coverage proving:
+Ignore the client filename. Generate a cryptographically unique server filename with the extension determined from verified content. Do not store or return the original filename.
 
-- the exact Checkout Intents schema and access rules
-- no PII fields exist
-- token generation produces high-entropy, non-repeating raw tokens
-- hashes are deterministic 64-character lowercase hexadecimal values
-- raw tokens are never included in persisted create data
-- deadlines are exactly 24 and 48 hours from the same creation time
-- amount values are integers of at least one cent
-- upload positions outside 1–3 are rejected
-- duplicate positions for one Intent are rejected
-- the same position may be used by different Intents
-- the token hash is absent from ordinary administrator and anonymous API output
-- anonymous Checkout Intent CRUD is denied
-- authenticated administrators can list/read but cannot ordinarily create/update/delete
-- Supabase `anon` and `authenticated` database roles cannot read or mutate Checkout Intent or upload ownership data
-- all Payload tables retain non-FORCED RLS
-- GraphQL remains unavailable
+Do not resize, recompress, alter, or remove metadata from accepted images in this Unit.
 
-Run one controlled synthetic Local API lifecycle:
+## Transaction and Concurrency
 
-1. Generate a synthetic credential.
-2. Create one Checkout Intent through an explicit trusted Local API override.
-3. Upload one tiny synthetic PNG linked at position 1.
-4. Confirm the Join returns that upload and does not expose the token hash through ordinary access.
-5. Delete the upload through Payload so its Supabase object is removed.
-6. Delete the synthetic Intent through an explicit trusted override.
-7. Confirm final Checkout Intent, Order Upload, and bucket counts return to zero.
+Aggregate limits must be transactionally enforced.
 
-Delete only records and objects created by this test.
+For upload and deletion mutations:
 
-Run dependency validation, migration status, Payload type and import-map generation, focused acceptance tests, lint, TypeScript, production build, route checks, GraphQL checks, and the existing postcard scene regression. Stop all temporary processes.
+* Start a database transaction.
+* Lock the owning Checkout Intent row before checking state, count, positions, or combined size.
+* Revalidate credentials, status, and expiry inside the lock.
+* Use parameterized queries only.
+* Pass the transaction through trusted Payload operations.
+* Commit only after the database and storage operation succeeds.
+* On failure, roll back and compensate for any newly created storage object so no orphan remains.
 
-## Exclusions
+The existing compound uniqueness constraint remains the final protection against duplicate positions.
 
-Do not add:
+Concurrent requests must never produce:
 
-- public Checkout Intent or upload endpoints
-- cookies or browser token storage
-- direct/client-presigned uploads
-- automatic cleanup jobs
-- Stripe Checkout or webhooks
-- Customer or Order creation
-- email
-- frontend forms
-- HEIC conversion
-- analytics
-- Phase 2 Unit 2.6 work
+* More than three uploads
+* Duplicate positions
+* More than 30 MiB combined
+* Orphaned database rows or bucket objects
 
-Do not change dependencies, environment files, Supabase bucket settings, AGENTS.md, frontend code, artwork, or assets unless an actual blocker requires approval.
+If the installed adapter cannot safely support this flow, stop and report the exact limitation rather than weakening atomic enforcement.
 
-## Stop conditions
+## Delete Upload
 
-Stop and report BLOCKED if:
+`DELETE /current/uploads/:uploadId` must:
 
-- the repository contains unexpected pre-existing changes beyond the authorized `mission.md`
-- Unit 2.4 is not committed
-- existing upload rows or unexpected bucket objects are present
-- the migration includes destructive or unrelated operations
-- the ownership constraints cannot be represented safely
-- any test would require deleting non-synthetic data or objects
-- credentials would need to be printed, exposed, or committed
-- completing the Unit requires a public endpoint, cookie, Stripe, or cleanup job
+* Require the valid owning cookie.
+* Allow deletion only while the Intent is `draft` and unexpired.
+* Verify the upload belongs to that Intent.
+* Delete both its Payload record and corresponding private bucket object.
+* Return `204` on success.
 
-## Completion report
+Do not renumber remaining positions. A deleted position may be filled by a later upload.
 
-Report COMPLETE or BLOCKED and include:
+A missing or non-owned upload must return a generic not-found response without disclosing ownership.
 
-- starting and ending HEAD
-- changed files
-- exact collection fields and access behavior
-- token/deadline test evidence
-- migration and RLS inspection
-- ownership/index evidence
-- synthetic lifecycle and cleanup results
-- final database and bucket counts
-- regression results
-- final Git status
-- confirmation that no PII, raw token, secret, public endpoint, cookie, Stripe integration, or persistent test data was introduced
+## Request Security
 
-Do not commit or push.
+For every state-changing storefront endpoint:
+
+* Require a same-origin `Origin`.
+* Reject missing, malformed, or cross-origin origins.
+* Do not add permissive CORS headers.
+* Reject unexpected content types, fields, files, and bodies.
+* Use bounded request parsing.
+* Return stable error codes without stack traces or internal details.
+
+Do not add a misleading in-memory rate limiter. Production edge rate limiting or bot protection remains required before public deployment and is outside this Unit.
+
+## Schema and Dependencies
+
+No collection, Global, database schema, environment, or dependency change is expected.
+
+Do not generate or apply a migration. Stop if schema drift or a migration becomes necessary.
+
+Do not weaken existing access rules. All trusted writes must explicitly use server-side access override only inside the controlled service.
+
+## Verification
+
+Add focused red-first tests covering:
+
+* Exact endpoint and response contracts.
+* Checkout Settings is the minimum source rather than a hardcoded value.
+* New Intent creation and same-cookie resume.
+* Cookie flags, expiry, and absence of raw credentials from responses and logs.
+* Invalid amount and request rejection with no persistence.
+* Valid current-state access and generic invalid-cookie rejection.
+* Same-origin enforcement.
+* One, two, and three valid uploads.
+* Positions and the exact 15 MiB per-file and 30 MiB combined boundaries.
+* Invalid, mismatched, corrupt, oversized, excessive-pixel, duplicate-position, and fourth-file rejection.
+* Concurrent uploads cannot bypass count, position, or aggregate limits.
+* Cross-Intent reads and deletions are denied.
+* Successful deletion removes database and storage objects.
+* Forced failures leave no database or bucket residue.
+* Expired or non-draft Intents cannot upload or delete.
+* Direct anonymous Payload and unsigned Storage access remain denied.
+
+Use only uniquely named synthetic records and files. Remove all created rows, objects, cookies, and fixtures.
+
+Final counts must return to:
+
+* Checkout Intents: 0
+* Order Uploads: 0
+* `order-uploads` test objects: 0
+* Customers: 0
+* Orders: 0
+
+Run the existing acceptance, migration-status, type generation, import-map, TypeScript, lint, production-build, route, GraphQL-denial, and postcard-scene regression checks. Stop temporary processes.
+
+## Excluded Work
+
+Do not implement:
+
+* Frontend components or forms
+* Public upload credentials or direct browser-to-S3 uploads
+* Presigned client uploads or download/preview endpoints
+* Stripe or Checkout Sessions
+* Customers or Orders creation
+* Checkout status transitions beyond existing draft behavior
+* Email
+* Cleanup or scheduled jobs
+* CAPTCHA, WAF, or deployment rate limiting
+* HEIC conversion
+* Admin changes
+* Unit 2.7
+
+Do not modify `AGENTS.md`. Do not commit or push.
+
+## Completion Report
+
+Report:
+
+* `COMPLETE` or `BLOCKED`
+* Starting and ending HEAD
+* Final endpoint, cookie, and safe-response contracts
+* Transactional upload enforcement and concurrency evidence
+* Origin, credential, and direct-access denial evidence
+* Synthetic database and Storage lifecycle results
+* Final row and bucket-object counts
+* Dependency and migration status
+* Validation results
+* Files changed and final Git status
+* Confirmation that no secrets, raw tokens, frontend, Stripe, Orders, Customers, email, cleanup job, schema migration, dependency change, or persistent test data was introduced

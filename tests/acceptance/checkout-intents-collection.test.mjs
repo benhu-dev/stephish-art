@@ -15,6 +15,12 @@ test("Checkout Intents has the exact private stored schema and virtual Join", ()
     "accessTokenHash",
     "expiresAt",
     "deleteAfter",
+    "checkoutAttemptId",
+    "checkoutStartedAt",
+    "shippingAmountCents",
+    "totalAmountCents",
+    "stripeCheckoutSessionId",
+    "stripeCheckoutSessionExpiresAt",
     "uploads",
   ]);
   assert.equal(CheckoutIntents.timestamps, true);
@@ -28,7 +34,13 @@ test("Checkout Intents has the exact private stored schema and virtual Join", ()
   assert.equal(fieldsByName.status.defaultValue, "draft");
   assert.deepEqual(
     fieldsByName.status.options.map((option) => option.value),
-    ["draft", "checkout_created", "completed", "expired"],
+    [
+      "draft",
+      "checkout_pending",
+      "checkout_created",
+      "completed",
+      "expired",
+    ],
   );
 
   assert.deepEqual(fieldsByName.uploads, {
@@ -42,7 +54,7 @@ test("Checkout Intents has the exact private stored schema and virtual Join", ()
   });
 });
 
-test("Checkout Intents contains no PII, payment, order, or plaintext token fields", () => {
+test("Checkout Intents contains no PII, payment result, order, or plaintext token fields", () => {
   const forbiddenNames = [
     "name",
     "email",
@@ -52,7 +64,9 @@ test("Checkout Intents contains no PII, payment, order, or plaintext token field
     "userAgent",
     "customer",
     "order",
-    "stripe",
+    "stripeCustomerId",
+    "stripePaymentIntentId",
+    "paymentStatus",
     "rawToken",
     "accessToken",
   ];
@@ -61,6 +75,30 @@ test("Checkout Intents contains no PII, payment, order, or plaintext token field
   for (const forbiddenName of forbiddenNames) {
     assert.equal(configuredNames.includes(forbiddenName), false);
   }
+});
+
+test("Checkout recovery fields are unique where required and server-managed", async () => {
+  for (const name of [
+    "checkoutAttemptId",
+    "checkoutStartedAt",
+    "shippingAmountCents",
+    "totalAmountCents",
+    "stripeCheckoutSessionId",
+    "stripeCheckoutSessionExpiresAt",
+  ]) {
+    const field = fieldsByName[name];
+    assert.equal(field.admin.hidden, true, `${name} must be hidden`);
+    assert.equal(await field.access.read(), false, `${name} read must be denied`);
+    assert.equal(
+      await field.access.update(),
+      false,
+      `${name} update must be denied`,
+    );
+  }
+  assert.equal(fieldsByName.checkoutAttemptId.unique, true);
+  assert.equal(fieldsByName.stripeCheckoutSessionId.unique, true);
+  assert.equal(fieldsByName.shippingAmountCents.min, 0);
+  assert.equal(fieldsByName.totalAmountCents.min, 1);
 });
 
 test("Checkout Intent amounts require positive integer cents", async () => {

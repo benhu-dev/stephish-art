@@ -58,6 +58,31 @@ const hasExactKeys = (value: object, keys: string[]) => {
   );
 };
 
+export const parseEmptyObjectRequest = (value: unknown): Record<string, never> => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    !hasExactKeys(value, [])
+  ) {
+    throw new StorefrontApiError(400, "INVALID_REQUEST");
+  }
+
+  return {};
+};
+
+export const requireNoQueryString = (request: { url?: string }) => {
+  try {
+    if (!request.url) throw new Error("missing request URL");
+    if (new URL(request.url).search) {
+      throw new StorefrontApiError(400, "UNEXPECTED_QUERY");
+    }
+  } catch (error) {
+    if (error instanceof StorefrontApiError) throw error;
+    throw new StorefrontApiError(400, "INVALID_REQUEST_URL");
+  }
+};
+
 export const parseAmountRequest = (
   value: unknown,
   minimumAmountCents: number,

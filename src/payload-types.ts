@@ -206,11 +206,17 @@ export interface Order {
  */
 export interface CheckoutIntent {
   id: number;
-  status: 'draft' | 'checkout_created' | 'completed' | 'expired';
+  status: 'draft' | 'checkout_pending' | 'checkout_created' | 'completed' | 'expired';
   amountCents: number;
   accessTokenHash: string;
   expiresAt: string;
   deleteAfter: string;
+  checkoutAttemptId?: string | null;
+  checkoutStartedAt?: string | null;
+  shippingAmountCents?: number | null;
+  totalAmountCents?: number | null;
+  stripeCheckoutSessionId?: string | null;
+  stripeCheckoutSessionExpiresAt?: string | null;
   uploads?: {
     docs?: (number | OrderUpload)[];
     hasNextPage?: boolean;
@@ -401,6 +407,12 @@ export interface CheckoutIntentsSelect<T extends boolean = true> {
   accessTokenHash?: T;
   expiresAt?: T;
   deleteAfter?: T;
+  checkoutAttemptId?: T;
+  checkoutStartedAt?: T;
+  shippingAmountCents?: T;
+  totalAmountCents?: T;
+  stripeCheckoutSessionId?: T;
+  stripeCheckoutSessionExpiresAt?: T;
   uploads?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -474,6 +486,10 @@ export interface CheckoutSetting {
    * Enter an integer number of cents. 500 = $5.00.
    */
   minimumAmountCents: number;
+  /**
+   * Enter an integer number of cents. 100 = $1.00.
+   */
+  shippingFeeCents: number;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -483,6 +499,7 @@ export interface CheckoutSetting {
  */
 export interface CheckoutSettingsSelect<T extends boolean = true> {
   minimumAmountCents?: T;
+  shippingFeeCents?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

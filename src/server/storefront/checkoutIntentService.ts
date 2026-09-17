@@ -4,6 +4,7 @@ import { issueCheckoutIntentCredential } from "../checkout-intents/checkoutInten
 import { buildSafeCheckoutIntentResponse } from "./checkoutIntentApiContract";
 import { authorizeCheckoutIntent } from "./checkoutIntentAccess";
 import type { CheckoutIntentCredential } from "./checkoutIntentCookie";
+import { StorefrontApiError } from "./storefrontApiError";
 
 export const readMinimumAmountCents = async (request: PayloadRequest) => {
   const settings = await request.payload.findGlobal({
@@ -46,7 +47,9 @@ const safeState = async (
     amountCents: number;
     expiresAt: string;
     id: number;
+    shippingAmountCents?: number | null;
     status: string;
+    totalAmountCents?: number | null;
   },
   minimumAmountCents: number,
 ) =>
@@ -118,6 +121,12 @@ export const createOrResumeCheckoutIntent = async ({
         created: false,
         response: await safeState(request, intent, minimumAmountCents),
       };
+    }
+    if (
+      existing.status === "checkout_pending" ||
+      existing.status === "checkout_created"
+    ) {
+      throw new StorefrontApiError(409, "CHECKOUT_ALREADY_STARTED");
     }
   }
 

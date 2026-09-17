@@ -4,13 +4,13 @@ import test from "node:test";
 import { Orders } from "../../src/collections/Orders.ts";
 import { CheckoutSettings } from "../../src/globals/CheckoutSettings.ts";
 
-const [minimumAmountCents] = CheckoutSettings.fields;
+const [minimumAmountCents, shippingFeeCents] = CheckoutSettings.fields;
 
-test("Checkout Settings has the exact private one-field contract", () => {
+test("Checkout Settings has the exact private amount and shipping contract", () => {
   assert.equal(CheckoutSettings.slug, "checkout-settings");
   assert.equal(CheckoutSettings.label, "Checkout Settings");
   assert.equal(CheckoutSettings.admin.group, "Settings");
-  assert.equal(CheckoutSettings.fields.length, 1);
+  assert.equal(CheckoutSettings.fields.length, 2);
 
   assert.equal(minimumAmountCents.name, "minimumAmountCents");
   assert.equal(minimumAmountCents.label, "Minimum Payment Amount (cents)");
@@ -22,6 +22,14 @@ test("Checkout Settings has the exact private one-field contract", () => {
     minimumAmountCents.admin.description,
     "Enter an integer number of cents. 500 = $5.00.",
   );
+
+  assert.equal(shippingFeeCents.name, "shippingFeeCents");
+  assert.equal(shippingFeeCents.label, "Shipping Fee (cents)");
+  assert.equal(shippingFeeCents.type, "number");
+  assert.equal(shippingFeeCents.required, true);
+  assert.equal(shippingFeeCents.defaultValue, 100);
+  assert.equal(shippingFeeCents.min, 0);
+  assert.equal(shippingFeeCents.max, 10_000);
 });
 
 test("Checkout Settings accepts only finite positive integer cents", async () => {
@@ -42,6 +50,29 @@ test("Checkout Settings accepts only finite positive integer cents", async () =>
     undefined,
   ]) {
     assert.notEqual(await validate(value), true, `${String(value)} must fail`);
+  }
+});
+
+test("Checkout Settings accepts only configured integer shipping cents", async () => {
+  assert.equal(await shippingFeeCents.validate(0), true);
+  assert.equal(await shippingFeeCents.validate(100), true);
+  assert.equal(await shippingFeeCents.validate(10_000), true);
+
+  for (const value of [
+    -1,
+    10_001,
+    1.5,
+    Number.POSITIVE_INFINITY,
+    Number.NaN,
+    "100",
+    null,
+    undefined,
+  ]) {
+    assert.notEqual(
+      await shippingFeeCents.validate(value),
+      true,
+      `${String(value)} must fail`,
+    );
   }
 });
 

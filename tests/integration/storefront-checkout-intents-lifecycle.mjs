@@ -613,8 +613,11 @@ try {
   assert.equal((await upload(nonDraftIntent.cookie)).status, 201);
   const nonDraftUpload = (await uploadsForIntent(nonDraftIntent.credential.intentId))[0];
   await database.query(
-    "UPDATE public.checkout_intents SET status = 'checkout_created' WHERE id = $1",
-    [nonDraftIntent.credential.intentId],
+    "UPDATE public.checkout_intents SET status = 'checkout_pending', " +
+      "checkout_attempt_id = $2, checkout_started_at = now(), " +
+      "shipping_amount_cents = 100, total_amount_cents = amount_cents + 100 " +
+      "WHERE id = $1",
+    [nonDraftIntent.credential.intentId, randomUUID()],
   );
   assert.equal(
     (await upload(nonDraftIntent.cookie, { position: 2 })).status,

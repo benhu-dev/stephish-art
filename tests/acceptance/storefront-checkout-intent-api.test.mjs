@@ -19,6 +19,7 @@ import {
 import {
   isSameOriginRequest,
   parseAmountRequest,
+  parseEmptyObjectRequest,
 } from "../../src/server/storefront/storefrontRequestSecurity.ts";
 
 const png = Buffer.from(
@@ -43,8 +44,56 @@ test("root storefront endpoints have the exact route and method contract", () =>
         method: "delete",
         path: "/storefront/checkout-intents/current/uploads/:uploadId",
       },
+      {
+        method: "post",
+        path: "/storefront/checkout-intents/current/checkout-session",
+      },
     ],
   );
+});
+
+test("checkout creation body accepts exactly an empty JSON object", () => {
+  assert.deepEqual(parseEmptyObjectRequest({}), {});
+  for (const value of [
+    { successUrl: "https://attacker.invalid" },
+    { cancelUrl: "/elsewhere" },
+    [],
+    null,
+    "{}",
+  ]) {
+    assert.throws(() => parseEmptyObjectRequest(value));
+  }
+});
+
+test("safe current state exposes only checkout amount snapshots after reservation", () => {
+  const response = buildSafeCheckoutIntentResponse({
+    intent: {
+      accessTokenHash: "a".repeat(64),
+      amountCents: 725,
+      checkoutAttemptId: "private-attempt",
+      expiresAt: "2026-09-17T00:00:00.000Z",
+      shippingAmountCents: 100,
+      status: "checkout_pending",
+      stripeCheckoutSessionId: "cs_test_private",
+      totalAmountCents: 825,
+    },
+    minimumAmountCents: 500,
+    uploads: [],
+  });
+
+  assert.deepEqual(response, {
+    amountCents: 725,
+    expiresAt: "2026-09-17T00:00:00.000Z",
+    limits: {
+      ...STOREFRONT_SAFE_LIMITS,
+      minimumAmountCents: 500,
+    },
+    shippingAmountCents: 100,
+    status: "checkout_pending",
+    totalAmountCents: 825,
+    uploads: [],
+  });
+  assert.equal(/attempt|cs_test/.test(JSON.stringify(response)), false);
 });
 
 test("safe response and limits omit every private persistence field", () => {

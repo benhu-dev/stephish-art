@@ -6,6 +6,7 @@ import {
   serializeCheckoutIntentCookie,
   type CheckoutIntentCredential,
 } from "./checkoutIntentCookie";
+import { createOrResumeStripeCheckoutSession } from "./checkoutSessionService";
 import {
   createOrResumeCheckoutIntent,
   readCurrentCheckoutIntent,
@@ -17,8 +18,10 @@ import {
 } from "./orderUploadService";
 import {
   parseAmountRequest,
+  parseEmptyObjectRequest,
   parseStorefrontUpload,
   readStorefrontJson,
+  requireNoQueryString,
   requireSameOrigin,
 } from "./storefrontRequestSecurity";
 import {
@@ -143,6 +146,25 @@ const deleteUploadHandler = async (request: PayloadRequest) => {
   }
 };
 
+const checkoutSessionHandler = async (request: PayloadRequest) => {
+  try {
+    requireSameOrigin(request);
+    requireNoQueryString(request);
+    parseEmptyObjectRequest(await readStorefrontJson(request));
+    const credential = readRequiredCredential(request);
+    const result = await createOrResumeStripeCheckoutSession({
+      credential,
+      request,
+    });
+    return jsonResponse(
+      result.response,
+      result.created ? 201 : 200,
+    );
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
 export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
   {
     handler: createOrResumeHandler,
@@ -163,5 +185,10 @@ export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
     handler: deleteUploadHandler,
     method: "delete",
     path: "/storefront/checkout-intents/current/uploads/:uploadId",
+  },
+  {
+    handler: checkoutSessionHandler,
+    method: "post",
+    path: "/storefront/checkout-intents/current/checkout-session",
   },
 ];

@@ -16,7 +16,9 @@ export const STOREFRONT_SAFE_LIMITS = Object.freeze({
 type SafeIntentSource = {
   amountCents: number;
   expiresAt: string;
+  shippingAmountCents?: number | null;
   status: string;
+  totalAmountCents?: number | null;
 };
 
 type SafeUploadSource = {
@@ -34,20 +36,32 @@ export const buildSafeCheckoutIntentResponse = ({
   intent: SafeIntentSource & Record<string, unknown>;
   minimumAmountCents: number;
   uploads: Array<SafeUploadSource & Record<string, unknown>>;
-}) => ({
-  status: intent.status,
-  amountCents: intent.amountCents,
-  expiresAt: intent.expiresAt,
-  uploads: uploads
-    .map((upload) => ({
-      id: upload.id,
-      position: upload.position,
-      mimeType: upload.mimeType,
-      sizeBytes: upload.filesize,
-    }))
-    .sort((first, second) => first.position - second.position),
-  limits: {
-    minimumAmountCents,
-    ...STOREFRONT_SAFE_LIMITS,
-  },
-});
+}) => {
+  const hasSnapshots =
+    Number.isSafeInteger(intent.shippingAmountCents) &&
+    Number.isSafeInteger(intent.totalAmountCents);
+
+  return {
+    status: intent.status,
+    amountCents: intent.amountCents,
+    expiresAt: intent.expiresAt,
+    ...(hasSnapshots
+      ? {
+          shippingAmountCents: intent.shippingAmountCents as number,
+          totalAmountCents: intent.totalAmountCents as number,
+        }
+      : {}),
+    uploads: uploads
+      .map((upload) => ({
+        id: upload.id,
+        position: upload.position,
+        mimeType: upload.mimeType,
+        sizeBytes: upload.filesize,
+      }))
+      .sort((first, second) => first.position - second.position),
+    limits: {
+      minimumAmountCents,
+      ...STOREFRONT_SAFE_LIMITS,
+    },
+  };
+};

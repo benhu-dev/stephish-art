@@ -11,8 +11,9 @@ npm run dev
 
 Open http://localhost:3000. For a production preview, run `npm run build` followed by `npm run start`. In PowerShell environments that block `npm.ps1`, use `npm.cmd`.
 
-Payload requires `DATABASE_URL` and `PAYLOAD_SECRET`. Private order uploads also
-require these server-only variable names in `.env.local`:
+Copy `.env.example` to `.env.local` and replace its placeholders. Payload
+requires `DATABASE_URL` and `PAYLOAD_SECRET`. Private order uploads also require
+these server-only variable names:
 
 ```text
 SUPABASE_STORAGE_BUCKET
@@ -27,6 +28,32 @@ JPEG, PNG, and WebP uploads up to 15 MiB, stores no local copy, and serves files
 only through authenticated, signed downloads. Apply reviewed migrations with
 `npm run payload -- migrate`; inspect status with
 `npm run payload -- migrate:status`.
+
+Stripe Checkout Session creation additionally requires these server-only names:
+
+```text
+STRIPE_SECRET_KEY
+APP_BASE_URL
+```
+
+Unit 2.7 accepts a Stripe Test-mode secret key only. `APP_BASE_URL` must be a
+trusted canonical origin with no path, query string, fragment, or credentials;
+HTTPS is required except for a loopback development origin. Never give either
+variable a public environment prefix.
+
+`POST /api/storefront/checkout-intents/current/checkout-session` accepts exactly
+an empty JSON object from the same origin and requires the current HttpOnly
+Checkout Intent cookie. It snapshots the configured shipping fee, reserves one
+persisted attempt in a database transaction, calls Stripe after committing, and
+then finalizes the same attempt in a second transaction. Retries use the same
+persisted Stripe idempotency key. The response contains only `checkoutUrl` and
+`expiresAt`.
+
+The endpoint creates a guest, card-only, USD Stripe-hosted Session with United
+States shipping, fixed configured shipping, Customer creation enabled, and
+automatic tax, discounts, invoicing, and future payment-method saving disabled.
+This Unit does not include a webhook, payment confirmation, Customer or Order
+creation, or success/cancel pages. A redirect is never proof of payment.
 
 ## Scene and timing
 
@@ -66,4 +93,4 @@ Manually verify:
 
 ## Visual limitations
 
-The park postcard and small portrait decorations are temporary original SVG illustrations. Cardboard texture, lettering, illustrated hands, and construction depth are simplified interpretations of the photographs. The dark central opening is illustrative. The POC has no commerce or other backend behavior.
+The park postcard and small portrait decorations are temporary original SVG illustrations. Cardboard texture, lettering, illustrated hands, and construction depth are simplified interpretations of the photographs. The dark central opening is illustrative. Checkout Intent, private upload, and Stripe Test Checkout Session backend boundaries exist, but the public commission form, payment webhook, and order workflow are not implemented yet.

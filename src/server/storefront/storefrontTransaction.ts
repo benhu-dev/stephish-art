@@ -28,10 +28,16 @@ export type StorefrontTransaction = {
 
 export type LockedCheckoutIntent = {
   amountCents: number;
+  checkoutAttemptId: string | null;
+  checkoutStartedAt: string | null;
   deleteAfter: string;
   expiresAt: string;
   id: number;
+  shippingAmountCents: number | null;
   status: string;
+  stripeCheckoutSessionExpiresAt: string | null;
+  stripeCheckoutSessionId: string | null;
+  totalAmountCents: number | null;
 };
 
 const safelyMatchesHash = (actual: unknown, expected: string) => {
@@ -69,7 +75,10 @@ export const lockAndAuthorizeCheckoutIntent = async (
   credential: CheckoutIntentCredential,
 ): Promise<LockedCheckoutIntent> => {
   const result = await transaction.database.execute(sql`
-    SELECT id, status, amount_cents, access_token_hash, expires_at, delete_after
+    SELECT id, status, amount_cents, access_token_hash, expires_at, delete_after,
+      checkout_attempt_id, checkout_started_at, shipping_amount_cents,
+      total_amount_cents, stripe_checkout_session_id,
+      stripe_checkout_session_expires_at
     FROM public.checkout_intents
     WHERE id = ${credential.intentId}
     FOR UPDATE
@@ -93,10 +102,33 @@ export const lockAndAuthorizeCheckoutIntent = async (
 
   return {
     amountCents,
+    checkoutAttemptId:
+      typeof row.checkout_attempt_id === "string"
+        ? row.checkout_attempt_id
+        : null,
+    checkoutStartedAt: row.checkout_started_at
+      ? new Date(String(row.checkout_started_at)).toISOString()
+      : null,
     deleteAfter: new Date(String(row.delete_after)).toISOString(),
     expiresAt: expiresAt.toISOString(),
     id,
+    shippingAmountCents:
+      row.shipping_amount_cents === null ||
+      row.shipping_amount_cents === undefined
+        ? null
+        : Number(row.shipping_amount_cents),
     status: String(row.status),
+    stripeCheckoutSessionExpiresAt: row.stripe_checkout_session_expires_at
+      ? new Date(String(row.stripe_checkout_session_expires_at)).toISOString()
+      : null,
+    stripeCheckoutSessionId:
+      typeof row.stripe_checkout_session_id === "string"
+        ? row.stripe_checkout_session_id
+        : null,
+    totalAmountCents:
+      row.total_amount_cents === null || row.total_amount_cents === undefined
+        ? null
+        : Number(row.total_amount_cents),
   };
 };
 

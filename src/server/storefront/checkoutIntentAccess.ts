@@ -7,10 +7,15 @@ import { unauthorizedIntentError } from "./storefrontApiError";
 
 export type AuthorizedCheckoutIntent = {
   amountCents: number;
+  checkoutAttemptId: string | null;
   deleteAfter: string;
   expiresAt: string;
   id: number;
+  shippingAmountCents: number | null;
   status: string;
+  stripeCheckoutSessionExpiresAt: string | null;
+  stripeCheckoutSessionId: string | null;
+  totalAmountCents: number | null;
 };
 
 const matchesCredential = (
@@ -54,9 +59,31 @@ export const authorizeCheckoutIntent = async (
 
   return {
     amountCents: Number(document.amountCents),
+    checkoutAttemptId:
+      typeof document.checkoutAttemptId === "string"
+        ? document.checkoutAttemptId
+        : null,
     deleteAfter: String(document.deleteAfter),
     expiresAt: expiresAt.toISOString(),
     id: Number(document.id),
+    shippingAmountCents:
+      document.shippingAmountCents === null ||
+      document.shippingAmountCents === undefined
+        ? null
+        : Number(document.shippingAmountCents),
     status: String(document.status),
+    stripeCheckoutSessionExpiresAt:
+      typeof document.stripeCheckoutSessionExpiresAt === "string"
+        ? document.stripeCheckoutSessionExpiresAt
+        : null,
+    stripeCheckoutSessionId:
+      typeof document.stripeCheckoutSessionId === "string"
+        ? document.stripeCheckoutSessionId
+        : null,
+    totalAmountCents:
+      document.totalAmountCents === null ||
+      document.totalAmountCents === undefined
+        ? null
+        : Number(document.totalAmountCents),
   };
 };

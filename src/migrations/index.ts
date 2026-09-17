@@ -5,6 +5,7 @@ import * as migration_20260914_084256_add_orders from './20260914_084256_add_ord
 import * as migration_20260914_090914_add_checkout_settings from './20260914_090914_add_checkout_settings';
 import * as migration_20260915_071331_add_order_uploads from './20260915_071331_add_order_uploads';
 import * as migration_20260915_102514_add_checkout_intents from './20260915_102514_add_checkout_intents';
+import * as migration_20260917_080014_add_stripe_checkout_sessions from './20260917_080014_add_stripe_checkout_sessions';
 
 export const migrations = [
   {
@@ -40,6 +41,11 @@ export const migrations = [
   {
     up: migration_20260915_102514_add_checkout_intents.up,
     down: migration_20260915_102514_add_checkout_intents.down,
-    name: '20260915_102514_add_checkout_intents'
+    name: '20260915_102514_add_checkout_intents',
+  },
+  {
+    up: migration_20260917_080014_add_stripe_checkout_sessions.up,
+    down: migration_20260917_080014_add_stripe_checkout_sessions.down,
+    name: '20260917_080014_add_stripe_checkout_sessions'
   },
 ];

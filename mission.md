@@ -1,244 +1,193 @@
-# Phase 2 — Unit 2.6: Controlled Checkout Intent and Upload API
+# Phase 2 — Unit 2.7: Stripe Checkout Session
 
 ## Goal
 
-Add the controlled storefront API for creating or resuming a Checkout Intent and managing its private reference-photo uploads.
+Add the server-controlled Stripe Checkout Session workflow for the current Checkout Intent.
 
-This Unit makes the backend workflow callable by the future frontend. It does not add frontend UI, Stripe, Orders, Customers, email, or cleanup jobs.
+This Unit creates or resumes a Stripe-hosted payment attempt. It does not process webhooks, confirm payment, create Customers or Orders in Payload, or add frontend pages.
 
-## Baseline
+## Baseline and Preflight
 
-* Phase 2 Unit 2.5 is committed at `f6dba58`.
-* Checkout Intents, Order Uploads, Checkout Settings, private Supabase Storage, token helpers, expiry policy, and database constraints already exist.
-* Direct anonymous Payload collection access remains denied.
-* The working tree must be clean except for the authorized `mission.md` change.
-* `.env.local` remains ignored and must never be printed or modified.
+* Phase 2 Unit 2.6 is committed.
+* Record the starting HEAD and require a clean worktree except for the intentional `mission.md` modification.
+* Read `AGENTS.md` completely and run the existing repository, database, Storage, and migration-status preflight.
+* Require `STRIPE_SECRET_KEY` and a trusted canonical application base URL.
+* Use Stripe Test mode only during verification.
+* Never print, log, rewrite, or expose environment values.
 
-Record starting HEAD and Git status. Stop on unrelated changes.
+Stop with exact evidence if preflight or Stripe Test-mode access is unavailable.
 
-## Storefront Endpoints
+## Fixed Decisions
 
-Implement these as Payload root-level custom endpoints under the existing `/api` prefix:
+* Stripe-hosted Checkout
+* One-time payment in USD
+* Guest checkout
+* United States shipping addresses only
+* Fixed shipping charge, configurable in Payload, default 100 cents
+* Stripe creates a Customer for every confirmed Checkout
+* Do not request future payment-method storage
+* Card payments only in this Unit
+* Automatic tax disabled
+* Success redirects never confirm payment or create records
+* Only a verified webhook in a later Unit may create the Payload Customer and Order
 
-* `POST /api/storefront/checkout-intents`
-* `GET /api/storefront/checkout-intents/current`
-* `POST /api/storefront/checkout-intents/current/uploads`
-* `DELETE /api/storefront/checkout-intents/current/uploads/:uploadId`
+## Authorized Changes
 
-Do not modify or replace Payload’s normal collection REST routes.
+Install only the official `stripe` runtime dependency and update the lockfile.
 
-All responses must use `Cache-Control: no-store`.
+Add server-only environment validation for:
 
-### Create or Resume Intent
+* `STRIPE_SECRET_KEY`
+* `APP_BASE_URL`, unless an equivalent trusted canonical URL variable already exists
 
-`POST /api/storefront/checkout-intents` accepts JSON containing exactly:
+Update the environment example without adding real values.
 
-* `amountCents`: finite positive integer
+Add `shippingFeeCents` to Checkout Settings:
 
-Read the current `minimumAmountCents` from Checkout Settings through trusted server-side Payload access. Do not hardcode 500 in the endpoint.
+* Required integer
+* Default `100`
+* Minimum `0`
+* Maximum `10000`
+* Admin read/write only
 
-Reject missing, string, fractional, non-finite, unsafe, or below-minimum values without persisting anything.
+Extend Checkout Intents with the minimum internal fields required for safe recovery:
 
-If the request has a valid cookie for an unexpired `draft` Intent:
+* Add `checkout_pending` to the status options
+* `checkoutAttemptId`: unique, server-generated, internal
+* `checkoutStartedAt`
+* `shippingAmountCents`
+* `totalAmountCents`
+* `stripeCheckoutSessionId`: unique and internal
+* `stripeCheckoutSessionExpiresAt`
 
-* Reuse the same Intent.
-* Update only `amountCents`.
-* Do not rotate the token.
-* Do not extend `expiresAt` or `deleteAfter`.
+These fields are server-managed. Anonymous collection access remains denied.
 
-Otherwise:
+Generate, review, and apply one migration for these changes. Regenerate Payload types and schema artifacts through existing project commands.
 
-* Generate credentials using the existing Unit 2.5 helper.
-* Create a `draft` Intent with the existing 24-hour expiry and 48-hour deletion policy.
-* Store only the token hash.
-* Set the raw token only inside the protected cookie.
+## Endpoint
 
-Return `201` for a new Intent and `200` for a resumed Intent.
+Add:
 
-### Session Cookie
+`POST /api/storefront/checkout-intents/current/checkout-session`
 
-Use one cookie named:
+The endpoint accepts JSON containing exactly an empty object. Reject unexpected fields, files, content types, query-controlled return URLs, and malformed bodies.
 
-`stephish_checkout_intent`
+Require:
 
-The cookie must:
+* Valid Checkout Intent HttpOnly cookie
+* Same-origin `Origin`
+* Unexpired Intent
+* Valid amount meeting the current Checkout Settings minimum
+* Between one and three valid uploads
+* A state that can safely create, recover, or resume the same payment attempt
 
-* Be `HttpOnly`
-* Use `SameSite=Strict`
-* Use `Secure` in production
-* Have no `Domain`
-* Use path `/api/storefront/checkout-intents`
-* Expire no later than the Intent
-* Contain a versioned internal representation of the Intent identifier and raw token
-* Never contain the token hash or other data
+Return `Cache-Control: no-store`.
 
-Never return the raw token in JSON, headers other than `Set-Cookie`, logs, errors, generated files, or client-visible code.
+For a successful new Session, return `201`. For safe recovery or reuse of the same open Session, return `200`.
 
-Missing, malformed, unknown, expired, or incorrect credentials must receive a generic unauthorized response without revealing whether an Intent ID exists. Clear malformed or expired cookies.
+The response may contain only:
 
-### Safe Response
-
-Create/resume and current-state responses may return only:
-
-* `status`
-* `amountCents`
+* `checkoutUrl`
 * `expiresAt`
-* Upload entries containing `id`, `position`, `mimeType`, and `sizeBytes`
-* Current safe limits:
 
-  * `minimumAmountCents`
-  * `maxFiles: 3`
-  * `maxFileBytes: 15728640`
-  * `maxTotalBytes: 31457280`
-  * JPEG, PNG, and WebP MIME types
+Do not separately return internal Intent IDs, attempt IDs, Stripe Session IDs, Customer IDs, token material, metadata, Storage information, or raw Stripe objects.
 
-Do not return:
+## Session Contract
 
-* Checkout Intent ID
-* Raw token or token hash
-* `deleteAfter`
-* Storage keys, filenames, bucket names, credentials, permanent URLs, or signed URLs
-* Internal Payload metadata
+Create the Session server-side with:
 
-`GET /current` must require a valid cookie and must not mutate or extend the Intent.
+* `mode: payment`
+* Currency `usd`
+* One postcard line item whose amount is the Intent’s server-validated `amountCents`
+* Quantity `1`
+* United States shipping-address collection only
+* One fixed shipping option using the snapshotted `shippingFeeCents`
+* `customer_creation: always`
+* Card payment methods only
+* Automatic tax disabled
+* No promotion codes
+* No invoice creation
+* No `setup_future_usage`
+* No client-supplied Stripe parameters
 
-## Controlled Upload
+Build success and cancel URLs only from the validated canonical application base URL:
 
-`POST /current/uploads` accepts multipart form data containing exactly:
+* Success: `/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+* Cancel: `/checkout?checkout=cancelled`
 
-* One file
-* One integer `position` from 1 through 3
+The success URL is informational only. Do not add a success-page API, Session-detail endpoint, payment confirmation, or Order creation.
 
-Use Payload’s supported multipart/file parsing and the existing 15 MiB server limit.
+Put only the minimum reconciliation identifiers in Stripe metadata and `client_reference_id`. Never place credentials, cookie tokens, filenames, Storage keys, email addresses, or other PII in metadata.
 
-Validate on the server:
+The Stripe Session must expire no later than the Checkout Intent. If fewer than 30 minutes remain, expire the Intent, clear its cookie, and require creation of a fresh Intent instead of exceeding Stripe’s minimum Session lifetime.
 
-* The Intent credential is valid.
-* The Intent is `draft` and unexpired.
-* Position is 1, 2, or 3.
-* The position is not already occupied.
-* The Intent has fewer than three uploads.
-* The file is non-empty and no larger than 15 MiB.
-* Existing files plus the incoming file do not exceed 30 MiB.
-* Declared MIME type and detected content are both JPEG, PNG, or WebP and agree.
-* The file is a decodable image with valid dimensions.
-* Decoded pixel count does not exceed 100 megapixels.
+## Idempotency and Concurrency
 
-Use the existing image library if already installed. Do not add a dependency solely for validation.
+Use a recoverable two-phase flow:
 
-Ignore the client filename. Generate a cryptographically unique server filename with the extension determined from verified content. Do not store or return the original filename.
+1. Start a database transaction and lock the owning Checkout Intent row.
+2. Revalidate credentials, status, expiry, amount, uploads, and current settings.
+3. Snapshot subtotal, shipping, and total amounts.
+4. Create and persist one cryptographically random `checkoutAttemptId`.
+5. Set the Intent to `checkout_pending` and commit the reservation.
+6. Call Stripe outside the database transaction using an idempotency key derived only from the persisted attempt.
+7. Lock the same Intent again and persist the returned Session ID and expiry, then set `checkout_created`.
 
-Do not resize, recompress, alter, or remove metadata from accepted images in this Unit.
+Concurrent requests for the same Intent must converge on the same attempt and Stripe Session.
 
-## Transaction and Concurrency
+If the Stripe response is lost or the database finalization fails, retry with the same persisted attempt and idempotency key. Do not create a second Session.
 
-Aggregate limits must be transactionally enforced.
+An open existing Session may return its current URL. An expired Session must not be revived. A completed Session must not be interpreted as paid; return a stable processing/conflict response and wait for the future webhook Unit.
 
-For upload and deletion mutations:
+Once an Intent becomes `checkout_pending` or `checkout_created`:
 
-* Start a database transaction.
-* Lock the owning Checkout Intent row before checking state, count, positions, or combined size.
-* Revalidate credentials, status, and expiry inside the lock.
-* Use parameterized queries only.
-* Pass the transaction through trusted Payload operations.
-* Commit only after the database and storage operation succeeds.
-* On failure, roll back and compensate for any newly created storage object so no orphan remains.
+* Its amount and uploads are immutable.
+* Unit 2.6 create/resume must not silently replace it with another Intent.
+* Current-state responses may additionally expose only the safe shipping and total amount snapshots.
 
-The existing compound uniqueness constraint remains the final protection against duplicate positions.
-
-Concurrent requests must never produce:
-
-* More than three uploads
-* Duplicate positions
-* More than 30 MiB combined
-* Orphaned database rows or bucket objects
-
-If the installed adapter cannot safely support this flow, stop and report the exact limitation rather than weakening atomic enforcement.
-
-## Delete Upload
-
-`DELETE /current/uploads/:uploadId` must:
-
-* Require the valid owning cookie.
-* Allow deletion only while the Intent is `draft` and unexpired.
-* Verify the upload belongs to that Intent.
-* Delete both its Payload record and corresponding private bucket object.
-* Return `204` on success.
-
-Do not renumber remaining positions. A deleted position may be filled by a later upload.
-
-A missing or non-owned upload must return a generic not-found response without disclosing ownership.
-
-## Request Security
-
-For every state-changing storefront endpoint:
-
-* Require a same-origin `Origin`.
-* Reject missing, malformed, or cross-origin origins.
-* Do not add permissive CORS headers.
-* Reject unexpected content types, fields, files, and bodies.
-* Use bounded request parsing.
-* Return stable error codes without stack traces or internal details.
-
-Do not add a misleading in-memory rate limiter. Production edge rate limiting or bot protection remains required before public deployment and is outside this Unit.
-
-## Schema and Dependencies
-
-No collection, Global, database schema, environment, or dependency change is expected.
-
-Do not generate or apply a migration. Stop if schema drift or a migration becomes necessary.
-
-Do not weaken existing access rules. All trusted writes must explicitly use server-side access override only inside the controlled service.
+Do not hold a database transaction open during Stripe network calls.
 
 ## Verification
 
-Add focused red-first tests covering:
+Add focused red-first coverage for:
 
-* Exact endpoint and response contracts.
-* Checkout Settings is the minimum source rather than a hardcoded value.
-* New Intent creation and same-cookie resume.
-* Cookie flags, expiry, and absence of raw credentials from responses and logs.
-* Invalid amount and request rejection with no persistence.
-* Valid current-state access and generic invalid-cookie rejection.
-* Same-origin enforcement.
-* One, two, and three valid uploads.
-* Positions and the exact 15 MiB per-file and 30 MiB combined boundaries.
-* Invalid, mismatched, corrupt, oversized, excessive-pixel, duplicate-position, and fourth-file rejection.
-* Concurrent uploads cannot bypass count, position, or aggregate limits.
-* Cross-Intent reads and deletions are denied.
-* Successful deletion removes database and storage objects.
-* Forced failures leave no database or bucket residue.
-* Expired or non-draft Intents cannot upload or delete.
-* Direct anonymous Payload and unsigned Storage access remain denied.
+* Dynamic minimum and configurable shipping fee
+* Exact Session parameters and safe response
+* United States-only shipping
+* Customer creation enabled
+* Payment-method saving and automatic tax disabled
+* Missing uploads, invalid amount, expiry, invalid cookie, cross-origin, malformed body, and unexpected-field denial
+* Amount and upload immutability after checkout begins
+* Concurrent calls producing one internal attempt and one Stripe Session
+* Stripe timeout and post-creation database-failure recovery through the same idempotency key
+* No duplicate Session after retry
+* No Customer or Order rows created
+* No payment state inferred from the success URL
+* Existing anonymous Payload, GraphQL, and unsigned Storage denial
 
-Use only uniquely named synthetic records and files. Remove all created rows, objects, cookies, and fixtures.
+Run deterministic tests with an injected Stripe test double, followed by a real Stripe Test-mode lifecycle that creates and then expires its synthetic Checkout Session.
 
-Final counts must return to:
+Remove all synthetic database rows, Storage objects, cookies, and local fixtures. Stripe test Sessions cannot be deleted, so expire synthetic open Sessions and report that cleanup.
 
-* Checkout Intents: 0
-* Order Uploads: 0
-* `order-uploads` test objects: 0
-* Customers: 0
-* Orders: 0
-
-Run the existing acceptance, migration-status, type generation, import-map, TypeScript, lint, production-build, route, GraphQL-denial, and postcard-scene regression checks. Stop temporary processes.
+Run the existing acceptance, migration, type generation, import-map, TypeScript, lint, production build, route, GraphQL-denial, and postcard-scene regression gates required by `AGENTS.md`.
 
 ## Excluded Work
 
 Do not implement:
 
-* Frontend components or forms
-* Public upload credentials or direct browser-to-S3 uploads
-* Presigned client uploads or download/preview endpoints
-* Stripe or Checkout Sessions
-* Customers or Orders creation
-* Checkout status transitions beyond existing draft behavior
+* Webhooks or Stripe CLI forwarding
+* Payment confirmation
+* Payload Customer or Order creation
+* Success or cancel frontend pages
+* Saved payment methods
+* Sales-tax collection
+* International shipping
+* Discount codes
+* Refunds
 * Email
-* Cleanup or scheduled jobs
-* CAPTCHA, WAF, or deployment rate limiting
-* HEIC conversion
-* Admin changes
-* Unit 2.7
+* Admin UI customization
+* Live-mode charges
+* Unit 2.8
 
 Do not modify `AGENTS.md`. Do not commit or push.
 
@@ -248,12 +197,10 @@ Report:
 
 * `COMPLETE` or `BLOCKED`
 * Starting and ending HEAD
-* Final endpoint, cookie, and safe-response contracts
-* Transactional upload enforcement and concurrency evidence
-* Origin, credential, and direct-access denial evidence
-* Synthetic database and Storage lifecycle results
-* Final row and bucket-object counts
-* Dependency and migration status
-* Validation results
+* Final schema, migration, endpoint, Session, and safe-response contracts
+* Stripe Test-mode and idempotency evidence
+* Concurrency and failure-recovery results
+* Final database and Storage counts
+* Dependency and validation results
 * Files changed and final Git status
-* Confirmation that no secrets, raw tokens, frontend, Stripe, Orders, Customers, email, cleanup job, schema migration, dependency change, or persistent test data was introduced
+* Confirmation that no secret, live payment, webhook, Customer, Order, email, tax collection, saved payment method, frontend work, or persistent synthetic data was introduced

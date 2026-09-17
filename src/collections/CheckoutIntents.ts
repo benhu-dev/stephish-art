@@ -36,6 +36,7 @@ export const CheckoutIntents: CollectionConfig = {
       defaultValue: "draft",
       options: [
         { label: "Draft", value: "draft" },
+        { label: "Checkout pending", value: "checkout_pending" },
         { label: "Checkout created", value: "checkout_created" },
         { label: "Completed", value: "completed" },
         { label: "Expired", value: "expired" },
@@ -105,6 +106,89 @@ export const CheckoutIntents: CollectionConfig = {
           "Deletion eligibility must be later than expiration."
         );
       },
+    },
+    {
+      name: "checkoutAttemptId",
+      type: "text",
+      access: {
+        read: denyAccess,
+        update: denyAccess,
+      },
+      admin: { hidden: true },
+      maxLength: 36,
+      minLength: 36,
+      unique: true,
+      validate: (value: unknown) =>
+        (value === null ||
+          value === undefined ||
+          (typeof value === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+              value,
+            ))) ||
+        "Checkout attempt ID must be a version 4 UUID.",
+    },
+    {
+      name: "checkoutStartedAt",
+      type: "date",
+      access: {
+        read: denyAccess,
+        update: denyAccess,
+      },
+      admin: { hidden: true },
+    },
+    {
+      name: "shippingAmountCents",
+      type: "number",
+      access: {
+        read: denyAccess,
+        update: denyAccess,
+      },
+      admin: { hidden: true },
+      min: 0,
+      validate: (value: unknown) =>
+        (value === null ||
+          value === undefined ||
+          (typeof value === "number" &&
+            Number.isSafeInteger(value) &&
+            value >= 0 &&
+            value <= 10_000)) ||
+        "Shipping amount must be an integer from 0 through 10000 cents.",
+    },
+    {
+      name: "totalAmountCents",
+      type: "number",
+      access: {
+        read: denyAccess,
+        update: denyAccess,
+      },
+      admin: { hidden: true },
+      min: 1,
+      validate: (value: unknown) =>
+        (value === null ||
+          value === undefined ||
+          (typeof value === "number" &&
+            Number.isSafeInteger(value) &&
+            value >= 1)) ||
+        "Total amount must be a positive integer number of cents.",
+    },
+    {
+      name: "stripeCheckoutSessionId",
+      type: "text",
+      access: {
+        read: denyAccess,
+        update: denyAccess,
+      },
+      admin: { hidden: true },
+      unique: true,
+    },
+    {
+      name: "stripeCheckoutSessionExpiresAt",
+      type: "date",
+      access: {
+        read: denyAccess,
+        update: denyAccess,
+      },
+      admin: { hidden: true },
     },
     {
       name: "uploads",

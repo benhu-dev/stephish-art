@@ -19,7 +19,7 @@ test("Order Uploads has the exact private upload contract", () => {
   assert.equal(OrderUploads.slug, "order-uploads");
   assert.deepEqual(
     OrderUploads.fields.map((field) => field.name),
-    ["checkoutIntent", "position"],
+    ["checkoutIntent", "order", "position"],
   );
   assert.equal(OrderUploads.admin.group, "Orders");
   assert.deepEqual(OrderUploads.admin.defaultColumns, [
@@ -36,7 +36,7 @@ test("Order Uploads has the exact private upload contract", () => {
   });
 });
 
-test("Order Upload ownership is required, positioned, and unique per Intent", async () => {
+test("Order Upload ownership is required, positioned, and durably linked after payment", async () => {
   const fields = Object.fromEntries(
     OrderUploads.fields.map((field) => [field.name, field]),
   );
@@ -45,6 +45,12 @@ test("Order Upload ownership is required, positioned, and unique per Intent", as
   assert.equal(fields.checkoutIntent.relationTo, "checkout-intents");
   assert.equal(fields.checkoutIntent.required, true);
   assert.equal(fields.checkoutIntent.index, true);
+  assert.equal(fields.order.type, "relationship");
+  assert.equal(fields.order.relationTo, "orders");
+  assert.equal(fields.order.required, undefined);
+  assert.equal(fields.order.index, true);
+  assert.equal(typeof fields.order.access.update, "function");
+  assert.equal(await fields.order.access.update({ req: { user: {} } }), false);
 
   assert.equal(fields.position.type, "number");
   assert.equal(fields.position.required, true);

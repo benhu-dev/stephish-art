@@ -22,6 +22,7 @@ export const Orders: CollectionConfig = {
   admin: {
     defaultColumns: [
       "customer",
+      "checkoutIntent",
       "contactEmail",
       "orderStatus",
       "paymentStatus",
@@ -39,6 +40,16 @@ export const Orders: CollectionConfig = {
       },
       relationTo: "customers",
       required: true,
+    },
+    {
+      name: "checkoutIntent",
+      type: "relationship",
+      access: {
+        update: denyAccess,
+      },
+      relationTo: "checkout-intents",
+      required: true,
+      unique: true,
     },
     {
       name: "contactEmail",

@@ -72,6 +72,7 @@ export interface Config {
     orders: Order;
     'checkout-intents': CheckoutIntent;
     'order-uploads': OrderUpload;
+    'stripe-events': StripeEvent;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -88,6 +89,7 @@ export interface Config {
     orders: OrdersSelect<false> | OrdersSelect<true>;
     'checkout-intents': CheckoutIntentsSelect<false> | CheckoutIntentsSelect<true>;
     'order-uploads': OrderUploadsSelect<false> | OrderUploadsSelect<true>;
+    'stripe-events': StripeEventsSelect<false> | StripeEventsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -175,6 +177,7 @@ export interface Customer {
 export interface Order {
   id: number;
   customer: number | Customer;
+  checkoutIntent: number | CheckoutIntent;
   contactEmail: string;
   amountCents: number;
   currency: 'usd';
@@ -232,6 +235,7 @@ export interface CheckoutIntent {
 export interface OrderUpload {
   id: number;
   checkoutIntent: number | CheckoutIntent;
+  order?: (number | null) | Order;
   position: number;
   updatedAt: string;
   createdAt: string;
@@ -244,6 +248,46 @@ export interface OrderUpload {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "stripe-events".
+ */
+export interface StripeEvent {
+  id: number;
+  stripeEventId: string;
+  eventType:
+    | 'checkout.session.completed'
+    | 'checkout.session.async_payment_succeeded'
+    | 'checkout.session.async_payment_failed'
+    | 'checkout.session.expired';
+  disposition: 'processed' | 'ignored' | 'rejected';
+  checkoutIntent?: (number | null) | CheckoutIntent;
+  stripeCreatedAt: string;
+  processedAt: string;
+  code?:
+    | (
+        | 'already_expired'
+        | 'already_fulfilled'
+        | 'amount_mismatch'
+        | 'async_payment_failed'
+        | 'currency_mismatch'
+        | 'identity_conflict'
+        | 'intent_not_found'
+        | 'intent_state_conflict'
+        | 'invalid_customer'
+        | 'invalid_metadata'
+        | 'invalid_shipping'
+        | 'invalid_uploads'
+        | 'payment_mismatch'
+        | 'reconciliation_mismatch'
+        | 'session_expired'
+        | 'session_mismatch'
+        | 'session_unpaid'
+      )
+    | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -288,6 +332,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'order-uploads';
         value: number | OrderUpload;
+      } | null)
+    | ({
+        relationTo: 'stripe-events';
+        value: number | StripeEvent;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -370,6 +418,7 @@ export interface CustomersSelect<T extends boolean = true> {
  */
 export interface OrdersSelect<T extends boolean = true> {
   customer?: T;
+  checkoutIntent?: T;
   contactEmail?: T;
   amountCents?: T;
   currency?: T;
@@ -423,6 +472,7 @@ export interface CheckoutIntentsSelect<T extends boolean = true> {
  */
 export interface OrderUploadsSelect<T extends boolean = true> {
   checkoutIntent?: T;
+  order?: T;
   position?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -435,6 +485,21 @@ export interface OrderUploadsSelect<T extends boolean = true> {
   height?: T;
   focalX?: T;
   focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "stripe-events_select".
+ */
+export interface StripeEventsSelect<T extends boolean = true> {
+  stripeEventId?: T;
+  eventType?: T;
+  disposition?: T;
+  checkoutIntent?: T;
+  stripeCreatedAt?: T;
+  processedAt?: T;
+  code?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

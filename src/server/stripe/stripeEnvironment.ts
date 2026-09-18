@@ -3,6 +3,11 @@ type StripeEnvironmentInput = {
   secretKey: string | undefined;
 };
 
+type StripeWebhookEnvironmentInput = {
+  secretKey: string | undefined;
+  webhookSecret: string | undefined;
+};
+
 const isLoopback = (hostname: string) =>
   hostname === "localhost" ||
   hostname === "127.0.0.1" ||
@@ -44,4 +49,24 @@ export const readStripeCheckoutEnvironment = () =>
   validateStripeCheckoutEnvironment({
     appBaseURL: process.env.APP_BASE_URL,
     secretKey: process.env.STRIPE_SECRET_KEY,
+  });
+
+export const validateStripeWebhookEnvironment = ({
+  secretKey,
+  webhookSecret,
+}: StripeWebhookEnvironmentInput) => {
+  if (!secretKey?.startsWith("sk_test_")) {
+    throw new Error("STRIPE_TEST_SECRET_KEY_REQUIRED");
+  }
+  if (!webhookSecret?.startsWith("whsec_")) {
+    throw new Error("STRIPE_WEBHOOK_SECRET_REQUIRED");
+  }
+
+  return { secretKey, webhookSecret };
+};
+
+export const readStripeWebhookEnvironment = () =>
+  validateStripeWebhookEnvironment({
+    secretKey: process.env.STRIPE_SECRET_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   });

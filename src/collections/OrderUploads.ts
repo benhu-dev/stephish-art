@@ -4,6 +4,7 @@ import { CHECKOUT_INTENT_POLICY } from "../server/checkout-intents/checkoutInten
 
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   Boolean(user);
+const denyAccess = () => false;
 
 export const OrderUploads: CollectionConfig = {
   slug: "order-uploads",
@@ -24,6 +25,13 @@ export const OrderUploads: CollectionConfig = {
       index: true,
       relationTo: "checkout-intents",
       required: true,
+    },
+    {
+      name: "order",
+      type: "relationship",
+      access: { update: denyAccess },
+      index: true,
+      relationTo: "orders",
     },
     {
       name: "position",

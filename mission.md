@@ -1,195 +1,191 @@
-# Phase 2 — Unit 2.7: Stripe Checkout Session
+# Phase 2 — Unit 2.8: Verified Stripe Webhook Fulfillment
 
 ## Goal
 
-Add the server-controlled Stripe Checkout Session workflow for the current Checkout Intent.
+Add the verified Stripe webhook workflow that creates exactly one Payload Customer and Order only after Stripe confirms payment.
 
-This Unit creates or resumes a Stripe-hosted payment attempt. It does not process webhooks, confirm payment, create Customers or Orders in Payload, or add frontend pages.
+This Unit handles payment fulfillment only. It does not add frontend pages, email, refunds, shipping operations, tax collection, or live-mode deployment.
 
-## Baseline and Preflight
+## Preflight
 
-* Phase 2 Unit 2.6 is committed.
-* Record the starting HEAD and require a clean worktree except for the intentional `mission.md` modification.
-* Read `AGENTS.md` completely and run the existing repository, database, Storage, and migration-status preflight.
-* Require `STRIPE_SECRET_KEY` and a trusted canonical application base URL.
-* Use Stripe Test mode only during verification.
-* Never print, log, rewrite, or expose environment values.
+* Require Phase 2 Unit 2.7 to be committed.
+* Record starting HEAD and Git status.
+* Allow only the intentional `mission.md` modification.
+* Read `AGENTS.md` completely and run its required preflight.
+* Confirm Stripe CLI 1.51.0 is authenticated in Sandbox mode and forwarding to the local endpoint.
+* Require `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` without printing, rewriting, or exposing either value.
+* Keep all Stripe verification in Test mode.
 
-Stop with exact evidence if preflight or Stripe Test-mode access is unavailable.
+Stop on unrelated changes, missing configuration, unapplied migrations, or schema drift.
 
-## Fixed Decisions
+## Webhook Endpoint
 
-* Stripe-hosted Checkout
-* One-time payment in USD
-* Guest checkout
-* United States shipping addresses only
-* Fixed shipping charge, configurable in Payload, default 100 cents
-* Stripe creates a Customer for every confirmed Checkout
-* Do not request future payment-method storage
-* Card payments only in this Unit
-* Automatic tax disabled
-* Success redirects never confirm payment or create records
-* Only a verified webhook in a later Unit may create the Payload Customer and Order
+Add a Next.js App Router endpoint:
 
-## Authorized Changes
+`POST /api/webhooks/stripe`
 
-Install only the official `stripe` runtime dependency and update the lockfile.
+Use the App Router directly so the exact raw request body is available. Do not implement this through a handler that parses or mutates JSON before signature verification.
 
-Add server-only environment validation for:
+The endpoint must:
 
-* `STRIPE_SECRET_KEY`
-* `APP_BASE_URL`, unless an equivalent trusted canonical URL variable already exists
+* Read a bounded raw body with a 1 MiB maximum.
+* Require exactly one valid `Stripe-Signature` header.
+* Verify the raw body with the official Stripe SDK and `STRIPE_WEBHOOK_SECRET`.
+* Keep Stripe’s normal timestamp tolerance.
+* Never log the body, signature, secret, customer PII, or raw Stripe objects.
+* Return a generic `400` for missing or invalid signatures or malformed payloads.
+* Return `200` for safely ignored, already-processed, or successfully processed events.
+* Return `500` for transient processing failures so Stripe retries.
 
-Update the environment example without adding real values.
+Do not require an Origin header, storefront cookie, CSRF token, or browser authentication. The Stripe signature is this endpoint’s trust boundary.
 
-Add `shippingFeeCents` to Checkout Settings:
+Add `STRIPE_WEBHOOK_SECRET` to server-only environment validation and `.env.example` without a real value.
 
-* Required integer
-* Default `100`
-* Minimum `0`
-* Maximum `10000`
-* Admin read/write only
+## Supported Events
 
-Extend Checkout Intents with the minimum internal fields required for safe recovery:
+Handle only these snapshot events:
 
-* Add `checkout_pending` to the status options
-* `checkoutAttemptId`: unique, server-generated, internal
-* `checkoutStartedAt`
-* `shippingAmountCents`
-* `totalAmountCents`
-* `stripeCheckoutSessionId`: unique and internal
-* `stripeCheckoutSessionExpiresAt`
+* `checkout.session.completed`
+* `checkout.session.async_payment_succeeded`
+* `checkout.session.async_payment_failed`
+* `checkout.session.expired`
 
-These fields are server-managed. Anonymous collection access remains denied.
+A verified event without this application’s reconciliation metadata may be acknowledged and ignored without persistence or disclosure.
 
-Generate, review, and apply one migration for these changes. Regenerate Payload types and schema artifacts through existing project commands.
+A verified event claiming this application’s metadata but conflicting with stored state, Session ID, attempt ID, amounts, currency, or ownership must not mutate fulfillment data.
 
-## Endpoint
+## Paid Session Verification
 
-Add:
+For completion or asynchronous-success events:
 
-`POST /api/storefront/checkout-intents/current/checkout-session`
+1. Verify the event signature.
+2. Retrieve the latest Checkout Session from Stripe using the server key before opening a database transaction.
+3. Require:
 
-The endpoint accepts JSON containing exactly an empty object. Reject unexpected fields, files, content types, query-controlled return URLs, and malformed bodies.
+   * Test mode
+   * `mode: payment`
+   * `payment_status: paid`
+   * Currency `usd`
+   * A Stripe Customer ID
+   * A PaymentIntent ID
+   * Matching Checkout Intent and attempt reconciliation metadata
+   * Session ID matching the stored Checkout Intent
+   * Subtotal, shipping, and total matching the immutable Unit 2.7 snapshots
+   * United States shipping address
+   * Valid customer email and name
+   * Between one and three existing private uploads belonging to the Intent
 
-Require:
+Do not trust redirect query parameters, client data, event metadata alone, or an unrefreshed event snapshot as proof of payment.
 
-* Valid Checkout Intent HttpOnly cookie
-* Same-origin `Origin`
-* Unexpired Intent
-* Valid amount meeting the current Checkout Settings minimum
-* Between one and three valid uploads
-* A state that can safely create, recover, or resume the same payment attempt
+A completed but unpaid Session must not create a Customer or Order. A later valid `async_payment_succeeded` event may fulfill it.
 
-Return `Cache-Control: no-store`.
+## Atomic Fulfillment
 
-For a successful new Session, return `201`. For safe recovery or reuse of the same open Session, return `200`.
+After external Stripe verification, start one database transaction and lock the owning Checkout Intent.
 
-The response may contain only:
+Inside the transaction:
 
-* `checkoutUrl`
-* `expiresAt`
+* Revalidate Intent status, attempt, Session ID, amounts, expiry relationship, and uploads.
+* Deduplicate by Stripe event ID, Checkout Session ID, and PaymentIntent ID.
+* Normalize the Stripe email to lowercase.
+* Create or reuse the Payload Customer:
 
-Do not separately return internal Intent IDs, attempt IDs, Stripe Session IDs, Customer IDs, token material, metadata, Storage information, or raw Stripe objects.
+  * Reuse an exact existing email/Stripe Customer match.
+  * Attach the Stripe Customer ID only if the existing customer has none.
+  * Never overwrite a different existing Stripe Customer ID or silently merge conflicting identities.
+* Create exactly one Order using the existing Orders schema.
+* Store immutable customer, shipping-address, upload, currency, subtotal, shipping, total, Session, PaymentIntent, and paid-time snapshots required by the existing schema.
+* Use the existing initial paid/unfulfilled Order status.
+* Preserve the private upload objects and durably associate their records/snapshots with the paid Order.
+* Do not copy files, expose Storage keys, or create public/signed URLs.
+* Mark the Checkout Intent `completed`.
+* Record the webhook event as processed.
+* Commit all fulfillment changes together.
 
-## Session Contract
+Any failure must roll back the Customer, Order, Intent, upload association, and webhook-event writes together.
 
-Create the Session server-side with:
+Concurrent deliveries and differently ordered success events must converge on the same Customer and Order.
 
-* `mode: payment`
-* Currency `usd`
-* One postcard line item whose amount is the Intent’s server-validated `amountCents`
-* Quantity `1`
-* United States shipping-address collection only
-* One fixed shipping option using the snapshotted `shippingFeeCents`
-* `customer_creation: always`
-* Card payment methods only
-* Automatic tax disabled
-* No promotion codes
-* No invoice creation
-* No `setup_future_usage`
-* No client-supplied Stripe parameters
+## Webhook Event Ledger and Constraints
 
-Build success and cancel URLs only from the validated canonical application base URL:
+Add one internal Stripe webhook-event collection/table containing only the minimum audit data:
 
-* Success: `/checkout/success?session_id={CHECKOUT_SESSION_ID}`
-* Cancel: `/checkout?checkout=cancelled`
+* Unique Stripe event ID
+* Event type
+* Processing disposition
+* Related internal reconciliation reference
+* Stripe event creation time
+* Processed time
+* Non-sensitive failure or ignore code when applicable
 
-The success URL is informational only. Do not add a success-page API, Session-detail endpoint, payment confirmation, or Order creation.
+Do not persist the raw webhook payload, address, email, card details, signature, or secret in the ledger.
 
-Put only the minimum reconciliation identifiers in Stripe metadata and `client_reference_id`. Never place credentials, cookie tokens, filenames, Storage keys, email addresses, or other PII in metadata.
+Access must be admin-read-only. Anonymous REST/GraphQL create, update, and delete remain denied. Trusted webhook writes must explicitly override access only inside the fulfillment service.
 
-The Stripe Session must expire no later than the Checkout Intent. If fewer than 30 minutes remain, expire the Intent, clear its cookie, and require creation of a fresh Intent instead of exceeding Stripe’s minimum Session lifetime.
+Reuse existing Order payment uniqueness constraints. If Checkout Session or PaymentIntent uniqueness is missing, add the minimum required constraints.
 
-## Idempotency and Concurrency
+Generate, review, and apply one migration for the webhook ledger and any strictly necessary uniqueness or relationship changes. Do not add dependencies or redesign existing collections.
 
-Use a recoverable two-phase flow:
+## Failure and Expiry Events
 
-1. Start a database transaction and lock the owning Checkout Intent row.
-2. Revalidate credentials, status, expiry, amount, uploads, and current settings.
-3. Snapshot subtotal, shipping, and total amounts.
-4. Create and persist one cryptographically random `checkoutAttemptId`.
-5. Set the Intent to `checkout_pending` and commit the reservation.
-6. Call Stripe outside the database transaction using an idempotency key derived only from the persisted attempt.
-7. Lock the same Intent again and persist the returned Session ID and expiry, then set `checkout_created`.
+For `checkout.session.async_payment_failed`:
 
-Concurrent requests for the same Intent must converge on the same attempt and Stripe Session.
+* Never create Customer or Order records.
+* Record the verified event.
+* Mark the matching unfulfilled Intent expired so a later storefront request can start a fresh Intent.
 
-If the Stripe response is lost or the database finalization fails, retry with the same persisted attempt and idempotency key. Do not create a second Session.
+For `checkout.session.expired`:
 
-An open existing Session may return its current URL. An expired Session must not be revived. A completed Session must not be interpreted as paid; return a stable processing/conflict response and wait for the future webhook Unit.
+* Never create Customer or Order records.
+* Mark the matching unfulfilled Intent expired.
+* Never change an already completed Intent or Order.
 
-Once an Intent becomes `checkout_pending` or `checkout_created`:
-
-* Its amount and uploads are immutable.
-* Unit 2.6 create/resume must not silently replace it with another Intent.
-* Current-state responses may additionally expose only the safe shipping and total amount snapshots.
-
-Do not hold a database transaction open during Stripe network calls.
+Unknown Sessions without this application’s metadata may be acknowledged and ignored. Conflicting events must not overwrite paid state.
 
 ## Verification
 
-Add focused red-first coverage for:
+Add focused red-first tests for:
 
-* Dynamic minimum and configurable shipping fee
-* Exact Session parameters and safe response
-* United States-only shipping
-* Customer creation enabled
-* Payment-method saving and automatic tax disabled
-* Missing uploads, invalid amount, expiry, invalid cookie, cross-origin, malformed body, and unexpected-field denial
-* Amount and upload immutability after checkout begins
-* Concurrent calls producing one internal attempt and one Stripe Session
-* Stripe timeout and post-creation database-failure recovery through the same idempotency key
-* No duplicate Session after retry
-* No Customer or Order rows created
-* No payment state inferred from the success URL
-* Existing anonymous Payload, GraphQL, and unsigned Storage denial
+* Exact raw-body signature verification
+* Missing, malformed, expired, incorrect-secret, duplicated-header, mutated-body, and oversized-body rejection
+* Safe handling of unrelated and unsupported signed events
+* Paid completion creating one Customer and one Order
+* Completed-but-unpaid behavior followed by asynchronous success
+* Exact customer, shipping, upload, and payment snapshots
+* Duplicate delivery, concurrent delivery, and reversed event order
+* Existing-customer reuse and identity-conflict denial
+* Amount, currency, Session, PaymentIntent, metadata, country, upload, and ownership mismatches
+* Transaction rollback after injected failures
+* Async failure and Session expiry without Order creation
+* Anonymous REST, GraphQL, and private Storage denial
+* No secrets or PII in logs, errors, URLs, or webhook ledger
 
-Run deterministic tests with an injected Stripe test double, followed by a real Stripe Test-mode lifecycle that creates and then expires its synthetic Checkout Session.
+Use Stripe SDK-generated signatures and deterministic Stripe test doubles for exhaustive tests.
 
-Remove all synthetic database rows, Storage objects, cookies, and local fixtures. Stripe test Sessions cannot be deleted, so expire synthetic open Sessions and report that cleanup.
+Also verify one real Stripe CLI signed delivery reaches the production-built local endpoint. It may be an unrelated synthetic Stripe event and must be safely acknowledged without creating data.
 
-Run the existing acceptance, migration, type generation, import-map, TypeScript, lint, production build, route, GraphQL-denial, and postcard-scene regression gates required by `AGENTS.md`.
+Remove all Unit-created database rows, Storage objects, cookies, and fixtures. Test-mode Stripe payment objects that cannot be deleted may remain, but identify their type and confirm that no live charge occurred.
+
+Run the shared validation and regression gates defined by `AGENTS.md`.
 
 ## Excluded Work
 
 Do not implement:
 
-* Webhooks or Stripe CLI forwarding
-* Payment confirmation
-* Payload Customer or Order creation
 * Success or cancel frontend pages
+* Order-status polling endpoints
+* Email or notification delivery
+* Refunds, disputes, cancellations, or chargebacks
+* Shipment creation or tracking
+* Tax collection
 * Saved payment methods
-* Sales-tax collection
 * International shipping
-* Discount codes
-* Refunds
-* Email
-* Admin UI customization
-* Live-mode charges
-* Unit 2.8
+* Background queues or cleanup jobs
+* Dashboard webhook registration
+* Live-mode payments
+* Unit 2.9
 
-Do not modify `AGENTS.md`. Do not commit or push.
+Do not modify `AGENTS.md`, commit, or push.
 
 ## Completion Report
 
@@ -197,10 +193,12 @@ Report:
 
 * `COMPLETE` or `BLOCKED`
 * Starting and ending HEAD
-* Final schema, migration, endpoint, Session, and safe-response contracts
-* Stripe Test-mode and idempotency evidence
-* Concurrency and failure-recovery results
+* Final endpoint, signature, event, schema, and migration contracts
+* Paid-session verification and atomic fulfillment evidence
+* Duplicate, concurrency, ordering, and rollback evidence
+* Stripe CLI delivery result
 * Final database and Storage counts
-* Dependency and validation results
+* Remaining Stripe Test objects, if any
+* Dependency, migration, and validation results
 * Files changed and final Git status
-* Confirmation that no secret, live payment, webhook, Customer, Order, email, tax collection, saved payment method, frontend work, or persistent synthetic data was introduced
+* Confirmation that no secret, live charge, frontend, email, refund, shipment, tax, saved payment method, public file access, or persistent local fixture was introduced

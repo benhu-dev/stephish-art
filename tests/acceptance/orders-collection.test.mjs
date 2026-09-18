@@ -20,6 +20,7 @@ test("Orders has exactly the approved non-auth field contract", () => {
   assert.equal(Orders.disableDuplicate, true);
   assert.deepEqual(Object.keys(fieldsByName).sort(), [
     "amountCents",
+    "checkoutIntent",
     "completedAt",
     "contactEmail",
     "currency",
@@ -39,6 +40,10 @@ test("Orders has exactly the approved non-auth field contract", () => {
   assert.equal(fieldsByName.customer.type, "relationship");
   assert.equal(fieldsByName.customer.relationTo, "customers");
   assert.equal(fieldsByName.customer.required, true);
+  assert.equal(fieldsByName.checkoutIntent.type, "relationship");
+  assert.equal(fieldsByName.checkoutIntent.relationTo, "checkout-intents");
+  assert.equal(fieldsByName.checkoutIntent.required, true);
+  assert.equal(fieldsByName.checkoutIntent.unique, true);
 
   assert.equal(fieldsByName.contactEmail.type, "email");
   assert.equal(fieldsByName.contactEmail.required, true);
@@ -164,6 +169,7 @@ test("Orders has the exact shipping and fulfillment contract", async () => {
 test("Orders exposes the approved Admin columns", () => {
   assert.deepEqual(Orders.admin.defaultColumns, [
     "customer",
+    "checkoutIntent",
     "contactEmail",
     "orderStatus",
     "paymentStatus",

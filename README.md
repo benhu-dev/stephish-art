@@ -33,6 +33,7 @@ Stripe Checkout Session creation additionally requires these server-only names:
 
 ```text
 STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
 APP_BASE_URL
 ```
 
@@ -40,6 +41,23 @@ Unit 2.7 accepts a Stripe Test-mode secret key only. `APP_BASE_URL` must be a
 trusted canonical origin with no path, query string, fragment, or credentials;
 HTTPS is required except for a loopback development origin. Never give either
 variable a public environment prefix.
+
+`POST /api/webhooks/stripe` accepts only Stripe-signed raw requests up to
+1 MiB. For local Test-mode verification, run the authenticated Stripe CLI
+listener and forward `checkout.session.completed`,
+`checkout.session.async_payment_succeeded`,
+`checkout.session.async_payment_failed`, and `checkout.session.expired` to
+`http://localhost:3000/api/webhooks/stripe`. Use the listener's server-only
+signing secret as `STRIPE_WEBHOOK_SECRET`; never expose it to browser code.
+
+The webhook retrieves the latest Checkout Session before entering one locked
+database transaction. Only a paid, Test-mode, USD Session that exactly matches
+the stored Checkout Intent can create or reuse a Customer, create one Order,
+associate the existing private uploads, complete the Intent, and write the
+minimal internal Stripe event ledger. Replays and reordered success events are
+idempotent. Expiry and asynchronous-payment failure events never create an
+Order. Raw event bodies, signatures, customer details, and Storage keys are not
+written to the ledger.
 
 `POST /api/storefront/checkout-intents/current/checkout-session` accepts exactly
 an empty JSON object from the same origin and requires the current HttpOnly
@@ -52,8 +70,7 @@ persisted Stripe idempotency key. The response contains only `checkoutUrl` and
 The endpoint creates a guest, card-only, USD Stripe-hosted Session with United
 States shipping, fixed configured shipping, Customer creation enabled, and
 automatic tax, discounts, invoicing, and future payment-method saving disabled.
-This Unit does not include a webhook, payment confirmation, Customer or Order
-creation, or success/cancel pages. A redirect is never proof of payment.
+There are still no success/cancel pages; a redirect is never proof of payment.
 
 ## Scene and timing
 

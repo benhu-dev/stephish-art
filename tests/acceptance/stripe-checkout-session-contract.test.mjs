@@ -20,7 +20,7 @@ const input = {
 test("Stripe Checkout parameters are exact, server-owned, and US-only", () => {
   assert.deepEqual(buildStripeCheckoutSessionParams(input), {
     automatic_tax: { enabled: false },
-    cancel_url: "https://shop.example/checkout?checkout=cancelled",
+    cancel_url: "https://shop.example/checkout/cancelled",
     client_reference_id: "42",
     customer_creation: "always",
     expires_at: 1_800_000_000,
@@ -51,12 +51,13 @@ test("Stripe Checkout parameters are exact, server-owned, and US-only", () => {
         },
       },
     ],
-    success_url:
-      "https://shop.example/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+    success_url: "https://shop.example/checkout/success",
   });
 
   const serialized = JSON.stringify(buildStripeCheckoutSessionParams(input));
   assert.equal(/promotion|setup_future_usage|email|filename|storage/i.test(serialized), false);
+  assert.equal(serialized.includes("{CHECKOUT_SESSION_ID}"), false);
+  assert.equal(serialized.includes("session_id"), false);
 });
 
 test("Stripe idempotency derives only from the persisted random attempt", () => {

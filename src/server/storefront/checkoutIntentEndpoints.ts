@@ -12,6 +12,7 @@ import {
   readCurrentCheckoutIntent,
   readMinimumAmountCents,
 } from "./checkoutIntentService";
+import { readCheckoutStatus } from "./checkoutStatusService";
 import {
   deleteCheckoutIntentFile,
   uploadCheckoutIntentFile,
@@ -106,6 +107,15 @@ const currentHandler = async (request: PayloadRequest) => {
   }
 };
 
+export const checkoutStatusHandler = async (request: PayloadRequest) => {
+  try {
+    const credential = readRequiredCredential(request);
+    return jsonResponse(await readCheckoutStatus(request, credential), 200);
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
 const uploadHandler = async (request: PayloadRequest) => {
   try {
     requireSameOrigin(request);
@@ -175,6 +185,11 @@ export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
     handler: currentHandler,
     method: "get",
     path: "/storefront/checkout-intents/current",
+  },
+  {
+    handler: checkoutStatusHandler,
+    method: "get",
+    path: "/storefront/checkout-intents/current/status",
   },
   {
     handler: uploadHandler,

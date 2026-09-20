@@ -564,7 +564,8 @@ try {
   const successPageResponse = await fetch(
     new URL("/checkout/success?session_id=untrusted", baseURL),
   );
-  assert.equal(successPageResponse.status, 404);
+  assert.equal(successPageResponse.status, 200);
+  assert.equal((await successPageResponse.text()).includes("untrusted"), false);
   assert.deepEqual(await countRows(), {
     checkout_intents: intentIDs.size,
     customers: 0,

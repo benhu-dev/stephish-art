@@ -45,7 +45,7 @@ export const buildStripeCheckoutSessionParams = ({
   shippingAmountCents,
 }: StripeCheckoutInput): Stripe.Checkout.SessionCreateParams => ({
   automatic_tax: { enabled: false },
-  cancel_url: `${baseURL}/checkout?checkout=cancelled`,
+  cancel_url: `${baseURL}/checkout/cancelled`,
   client_reference_id: String(intentId),
   customer_creation: "always",
   expires_at: expiresAtEpochSeconds,
@@ -76,7 +76,7 @@ export const buildStripeCheckoutSessionParams = ({
       },
     },
   ],
-  success_url: `${baseURL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+  success_url: `${baseURL}/checkout/success`,
 });
 
 export const validateStripeCheckoutSession = (

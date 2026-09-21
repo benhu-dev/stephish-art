@@ -1,210 +1,77 @@
-# Phase 2 — Unit 2.9: Safe Checkout Status and Result Pages
+# Phase 2 — Unit 2.10.2: Unified Text Transitions and Final-Stage Pacing
 
 ## Goal
 
-Add a cookie-authenticated checkout-status API and minimal success/cancel pages.
+Fix the remaining stuck or overlapping text states and give the final narrative stages more scroll room before the CTA appears.
 
-The pages display server-authoritative state only. They must never confirm payment, create Orders, or treat a Stripe Session ID or redirect as proof of payment.
+Keep this task limited to text visibility, transition state, and scroll-stage spacing.
 
-## Preflight
+## Unified Text State
 
-* Require Unit 2.8 to be committed.
-* Record starting HEAD and Git status.
-* Allow only the intentional `mission.md` modification.
-* Read `AGENTS.md` completely and run its required preflight.
-* Confirm all nine existing migrations are applied.
-* No Stripe CLI listener is required for this Unit.
-* Never print or modify environment secrets.
+Treat every major text presentation as part of one mutually exclusive sequence:
 
-## Status Endpoint
+1. Initial hero text
+2. Narrative stage 1
+3. Narrative stage 2
+4. Narrative stage 3
+5. Narrative stage 4
+6. Final CTA panel
 
-Add:
+The initial hero, narrative copy, and CTA must not use separate competing visibility calculations.
 
-`GET /api/storefront/checkout-intents/current/status`
+At rest, exactly one presentation group may be visible and readable. Every inactive group must finish with:
 
-Requirements:
+* `opacity: 0`
+* Its intended hidden transform
+* `visibility: hidden`
+* `pointer-events: none`
+* `aria-hidden="true"` where applicable
 
-* Authenticate only with the existing `stephish_checkout_intent` HttpOnly cookie.
-* Reuse the established credential hashing and constant-time verification.
-* Do not accept an Intent ID, Order ID, Stripe Session ID, token, email, or other identifier from query parameters or headers.
-* Read only PostgreSQL/Payload state. Do not call Stripe.
-* Return `Cache-Control: no-store`.
-* Return a generic `401` for a missing, malformed, unknown, or incorrect credential.
-* Do not reveal whether another Intent, Order, or Stripe Session exists.
+Remove any remaining scroll-derived partial opacity or transform that can leave the hero, narrative text, or CTA frozen between states.
 
-For a valid cookie, return only:
+A transition must:
 
-* `state`: `not_started`, `processing`, `confirmed`, or `expired`
-* For `confirmed` only, the immutable safe monetary summary:
+1. Finish the outgoing animation.
+2. Fully hide the outgoing group.
+3. Activate the requested group.
+4. Finish the incoming animation independently of further scrolling.
+5. End in explicit settled styles.
 
-  * `subtotalAmountCents`
-  * `shippingAmountCents`
-  * `totalAmountCents`
-  * `currency: "usd"`
-* An existing public-safe Order reference only if the current schema already provides one
+Use a reliable completion path with a safe fallback so missed animation or transition events cannot leave an intermediate state.
 
-State mapping:
+If scrolling changes the requested stage during an active transition, retain only the latest requested stage and settle there after the current transition completes.
 
-* `draft` → `not_started`
-* `checkout_pending` or `checkout_created` → `processing`
-* `completed` with its transactionally linked Order → `confirmed`
-* `expired` → `expired`
+Reduced-motion mode must switch immediately to a valid settled state.
 
-A `completed` Intent without its expected Order is an internal inconsistency. Do not report it as confirmed or expose details.
+## Final-Stage Pacing
 
-Never return:
+Do not make the fade or slide animations artificially slow.
 
-* Internal database IDs
-* Stripe Session, PaymentIntent, Customer, Charge, or Event IDs
-* Cookie tokens or hashes
-* Customer name, email, phone, or address
-* Upload records, filenames, Storage keys, or URLs
-* Webhook records or internal timestamps
+Instead, increase the available scroll distance near the end of the scene:
 
-## Checkout Redirect URLs
+* The last two narrative stages must have at least as much scroll space as the earlier narrative stages.
+* The final line, `A small piece of your story, made by hand.`, must remain fully settled for approximately one viewport height of scrolling before the CTA transition begins.
+* `Want one of your own?` must not begin entering while the final narrative is still entering or visible.
+* Extend the overall scene scroll height if necessary instead of compressing earlier stages.
+* Preserve deterministic reverse scrolling with the same improved spacing.
 
-Update newly created Checkout Sessions to use:
+Keep all copy, visual styling, scene artwork, modal behavior, and CTA content unchanged.
 
-* Success: `/checkout/success`
-* Cancel: `/checkout/cancelled`
+## Focused Verification
 
-Do not include `{CHECKOUT_SESSION_ID}` or any other identifier in either redirect URL.
+Test only this frontend behavior:
 
-Previously created Test Sessions may retain their old URLs and require no migration.
+* Stop just after every transition trigger and wait; no text may remain partially visible or overlapped.
+* Confirm the initial hero fully disappears before narrative stage 1 becomes readable.
+* Confirm every inactive presentation is hidden after settling.
+* Confirm rapid forward and reverse scrolling settles on the latest requested stage.
+* Confirm the final narrative receives a clearly longer stable dwell before the CTA.
+* Confirm the CTA never overlaps readable narrative text.
+* Verify desktop, portrait mobile, landscape mobile, day/night, and reduced motion.
+* Run focused tests, postcard-scene regression, TypeScript, ESLint, and production build only.
 
-If an old success link contains `session_id` or other query parameters:
+Do not change the modal, APIs, backend, Stripe, database, schema, migrations, dependencies, environment files, or copy.
 
-* Never read, send, display, log, or use them for authorization.
-* Remove them from the browser address after the page loads.
-* The displayed result must still depend only on the protected cookie and status endpoint.
+Preserve the current Unit 2.10 changes and user-owned files. Do not commit or push.
 
-## Success Page
-
-Add an accessible responsive page at:
-
-`/checkout/success`
-
-Use a small client component only where polling is required. Keep the rest server-rendered where practical.
-
-Display these states:
-
-* Initial/loading: “Confirming your payment…”
-* Confirmed: “Your postcard order is confirmed.”
-* Processing: explain that confirmation may take a moment
-* Expired: explain that no confirmed Order was found
-* Unauthorized/unavailable: explain that this checkout cannot be accessed from this browser
-
-Requirements:
-
-* Poll the status endpoint only while state is `processing`.
-* Use a bounded interval and stop after at most 60 seconds.
-* Abort requests on unmount.
-* Retry when the tab becomes visible, without creating overlapping requests.
-* After the polling limit, show a safe manual refresh action.
-* Never poll indefinitely.
-* Use an accessible live region for state changes.
-* Respect `prefers-reduced-motion`.
-* Do not promise an email until email delivery exists.
-* Do not expose PII or internal identifiers.
-* Add `noindex` metadata and a restrictive referrer policy.
-
-A page load or refresh must remain read-only and must never call the webhook fulfillment service.
-
-## Cancel Page
-
-Add:
-
-`/checkout/cancelled`
-
-Display clearly:
-
-* Payment was not completed.
-* No Order was created by visiting this page.
-
-Provide:
-
-* A “Return home” action.
-* A “Return to payment” action that posts exactly `{}` to the existing controlled Checkout Session endpoint and redirects only to the returned server-approved `checkoutUrl`.
-
-Handle expired, invalid, completed, or unavailable Intents without exposing details. Never create a new Order or infer payment state from the cancel redirect.
-
-## Visual and Accessibility Scope
-
-Create a restrained result-page layout consistent with the existing postcard site’s typography, color palette, day/night treatment, and responsive behavior.
-
-Do not copy the full 2.5D scene or change its animation.
-
-Requirements:
-
-* Desktop, mobile portrait, and mobile landscape support
-* Visible keyboard focus
-* Semantic headings and buttons
-* Appropriate contrast
-* No layout overflow
-* No motion-dependent information
-* Checkout-specific styles must not regress the existing scene
-
-This is a functional result-page design, not the final storefront checkout form.
-
-## Schema and Dependencies
-
-No schema, migration, environment, or dependency change is expected.
-
-Do not generate a migration or add a package. Stop and report evidence if either becomes necessary.
-
-Do not modify existing payment, webhook, Customer, Order, Storage, or direct-access security rules except for the redirect URL change and read-only status service required here.
-
-## Verification
-
-Add focused red-first coverage for:
-
-* Exact status response and no-store contract
-* Missing, malformed, incorrect, expired, and cross-Intent cookie denial
-* Correct mapping for all Intent states
-* `completed` without Order never returning `confirmed`
-* Safe confirmed monetary response
-* Absence of IDs, PII, upload data, Stripe data, and internal metadata
-* Status endpoint never calling Stripe or mutating data
-* Query parameters and fake Session IDs providing no authority
-* New Checkout Sessions using identifier-free success and cancel URLs
-* Success-page loading, processing, confirmed, expired, timeout, and unavailable states
-* Bounded polling, visibility retry, abort cleanup, and no overlapping requests
-* Cancel-page retry using the existing controlled endpoint
-* Accessibility, reduced motion, responsive layouts, and noindex behavior
-* Existing checkout, webhook, anonymous REST/GraphQL denial, Storage denial, and postcard-scene regressions
-
-Use uniquely named synthetic records and remove all created rows, objects, cookies, and fixtures.
-
-Run the shared validation gates defined by `AGENTS.md`. Stop all task-created processes.
-
-## Excluded Work
-
-Do not implement:
-
-* The main checkout amount/upload form
-* Payment or Order creation from a page
-* Stripe Session lookup from browser input
-* Email
-* Order-history or public order-lookup pages
-* Admin UI changes
-* Refunds, disputes, shipment tracking, or tax
-* Background jobs
-* Live-mode configuration
-* Unit 2.10
-
-Do not modify `AGENTS.md`. Do not commit or push.
-
-## Completion Report
-
-Report:
-
-* `COMPLETE` or `BLOCKED`
-* Starting and ending HEAD
-* Final status, cookie, redirect, polling, and retry contracts
-* Authorization and data-minimization evidence
-* Responsive and accessibility evidence
-* Final database and Storage counts
-* Dependency and migration status
-* Validation results
-* Files changed and final Git status
-* Confirmation that no payment mutation, webhook change, schema migration, dependency, secret, PII exposure, email, live charge, or persistent fixture was introduced
+Report the transition fix, revised stage spacing, validation results, files changed, and final Git status.

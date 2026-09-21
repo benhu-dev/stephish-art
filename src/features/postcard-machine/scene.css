@@ -32,6 +32,7 @@
 .scene-heading h1 { font-size: clamp(28px, 3.6vw, 52px); letter-spacing: -1.8px; font-weight: 400; line-height: 1.1; margin: 0; }
 .scene-heading h1 em { font-weight: 400; }
 .intro { font-size: 14px; margin: 12px 0 0; }
+.scene-heading { will-change: opacity, transform; }
 .machine-stage {
   position: absolute; top: 27%; bottom: 13%; left: 50%;
   aspect-ratio: 470 / 700; transform: translateX(-50%); max-width: 94vw;
@@ -42,6 +43,76 @@
 .postcard { transform: translateY(-166px); will-change: transform; }
 .handwritten-note { position: absolute; left: calc(50% + 205px); top: 52%; font-size: 24px; font-style: italic; line-height: 1.15; transform: rotate(-9deg); }
 .handwritten-note span { display: block; font-size: 48px; margin-left: -24px; transform: rotate(30deg); }
+.scroll-narrative { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.narrative-copy, .final-cta {
+  position: absolute; top: 11%; left: 16px; right: 16px; min-height: 112px;
+  text-align: center;
+}
+.narrative-copy p {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  width: fit-content; max-width: min(620px, 88vw); height: fit-content; margin: auto;
+  padding: 10px 18px 13px; font-size: clamp(20px, 2.7vw, 36px);
+  font-style: italic; line-height: 1.12; color: inherit;
+  background: color-mix(in srgb, #f6efd8 82%, transparent);
+  box-shadow: 4px 5px 0 color-mix(in srgb, #4a624f 11%, transparent);
+  will-change: opacity, transform, clip-path;
+}
+[data-theme="night"] .narrative-copy p { background: color-mix(in srgb, #233d42 88%, transparent); }
+.narrative-copy [data-narrative-mark] {
+  position: absolute; left: 14%; right: 10%; bottom: 7px; height: 3px;
+  background: #b9607c; opacity: .7; transform: rotate(-1deg) scaleX(1); transform-origin: left;
+}
+[data-narrative-stage][data-presentation-active="true"][data-phase="entering"] [data-narrative-mark] {
+  animation: narrative-mark-enter 210ms ease-out both;
+}
+@keyframes presentation-stage-exit {
+  from { opacity: 1; clip-path: inset(0); transform: translateY(0); }
+  to { opacity: 0; clip-path: inset(0 0 100%); transform: translateY(-8px); }
+}
+@keyframes presentation-stage-enter {
+  from { opacity: 0; clip-path: inset(100% 0 0); transform: translateY(10px); }
+  to { opacity: 1; clip-path: inset(0); transform: translateY(0); }
+}
+@keyframes narrative-mark-enter {
+  from { transform: rotate(-1deg) scaleX(0); }
+  to { transform: rotate(-1deg) scaleX(1); }
+}
+.final-cta {
+  z-index: 2; width: min(440px, calc(100% - 24px)); min-height: 0; margin: auto;
+  padding: 13px 26px 16px;
+  color: #304739; background: #f7eed5;
+  border: 1px solid #304739; box-shadow: 6px 7px 0 #30473926;
+  will-change: opacity, transform;
+}
+.presentation-group {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  clip-path: inset(100% 0 0); transform: translateY(10px);
+}
+.presentation-group[data-presentation-active="true"] { visibility: visible; }
+.presentation-group[data-presentation-active="true"][data-phase="settled"] {
+  opacity: 1; clip-path: inset(0); transform: translateY(0);
+}
+.presentation-group[data-presentation-active="true"][data-phase="exiting"] {
+  animation: presentation-stage-exit 150ms ease-in both;
+}
+.presentation-group[data-presentation-active="true"][data-phase="entering"] {
+  animation: presentation-stage-enter 210ms ease-out both;
+}
+.final-cta[data-presentation-active="true"][data-phase="settled"] { pointer-events: auto; }
+.final-cta::before {
+  content: ""; position: absolute; inset: 4px; border: 1px dashed #b9607c80; pointer-events: none;
+}
+[data-theme="night"] .final-cta { color: #f2ead2; background: #294348; border-color: #ddcfaa; box-shadow: 6px 7px 0 #101d2099; }
+.cta-kicker { margin: 0 0 3px; color: #a24b69; font: 700 9px/1.2 Arial, sans-serif; letter-spacing: 2px; text-transform: uppercase; }
+.final-cta h2 { margin: 0; font-size: clamp(25px, 3vw, 38px); font-weight: 400; line-height: 1.05; }
+.final-cta > p:not(.cta-kicker) { margin: 7px auto 10px; max-width: 350px; font: 12px/1.35 Arial, sans-serif; }
+.final-cta button {
+  position: relative; border: 0; padding: 9px 15px; color: #fff8e7; background: #a94d6d;
+  box-shadow: 3px 3px 0 #66364a; font: 700 11px/1 Arial, sans-serif;
+  letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+}
+.final-cta button:hover { background: #913f5c; }
+.final-cta button:focus-visible { outline: 3px solid #f1bf55; outline-offset: 4px; }
 .scene-instructions { position: absolute; bottom: 5.8%; left: 12px; right: 12px; }
 .scene-instructions > p:first-child { font-size: 16px; margin: 0 0 12px; }
 .progress-track { width: 112px; height: 2px; background: #31483630; margin: 0 auto; overflow: hidden; }
@@ -60,6 +131,7 @@
   .scene-location { font-size: 8px; letter-spacing: .6px; max-width: 100px; text-align: right; }
   .scene-location span { display: none; }
   .scene-heading { top: 13%; }
+  .narrative-copy, .final-cta { top: 12%; }
   .scene-heading h1 { max-width: 340px; margin: auto; font-size: 37px; line-height: 1.03; }
   .scene-heading h1 em { display: block; }
   .eyebrow { font-size: 8px; letter-spacing: 1.8px; }
@@ -73,6 +145,11 @@
 @media (max-height: 600px) and (min-width: 601px) {
   .scene-header { top: 15px; left: 24px; right: 24px; }
   .scene-heading { top: 15%; left: 24px; right: auto; width: 27%; text-align: left; }
+  .narrative-copy, .final-cta { top: 13%; left: 24px; right: auto; width: 29%; }
+  .narrative-copy p { font-size: clamp(17px, 2.5vw, 25px); }
+  .final-cta { padding: 10px 18px 12px; }
+  .final-cta h2 { font-size: clamp(22px, 3vw, 30px); }
+  .final-cta > p:not(.cta-kicker) { font-size: 10px; margin: 5px auto 7px; }
   .scene-heading h1 { font-size: 29px; }
   .scene-heading .eyebrow { font-size: 8px; }
   .machine-stage { top: 6%; bottom: 17%; }
@@ -81,6 +158,7 @@
   .scene-footer { bottom: 13px; left: 24px; right: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .coin, .postcard { will-change: auto; }
+  .coin, .postcard, .scene-heading, .narrative-copy p, .final-cta { will-change: auto; }
   .coin { opacity: 1; }
+  .presentation-group, .narrative-copy [data-narrative-mark] { animation: none; }
 }

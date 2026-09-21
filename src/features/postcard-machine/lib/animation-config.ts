@@ -8,7 +8,7 @@ export const SCROLL_TIMING = {
   printStart: 500,
   printDuration: 390,
   complete: 890,
-  scrollHeight: "360svh",
+  scrollHeight: "500svh",
 } as const;
 
 export function getStage(progress: number) {

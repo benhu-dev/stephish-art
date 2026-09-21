@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { animate, createTimeline, onScroll } from "animejs";
 import { getStage, SCROLL_TIMING as timing } from "../lib/animation-config";
+import { getBufferedPresentationIndex } from "../lib/scroll-narrative";
 
 export function useScrollAnimation() {
   const containerRef = useRef<HTMLElement>(null);
   const [stage, setStage] = useState(0);
+  const [presentationIndex, setPresentationIndex] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -19,6 +21,7 @@ export function useScrollAnimation() {
       const postcard = container.querySelector<SVGGElement>("[data-postcard]")!;
       const meter = container.querySelector<HTMLElement>("[data-progress]")!;
       const reduced = media.matches;
+      let selectedPresentationIndex = 0;
       const timeline = createTimeline({ autoplay: false, defaults: { ease: "linear" } });
       timeline.add(meter, { scaleX: [0, 1], duration: timing.duration }, 0);
       if (!reduced) {
@@ -27,22 +30,26 @@ export function useScrollAnimation() {
           .add(coin, { translateX: [0, 120], duration: timing.coinTravelDuration }, timing.coinTravel)
           .add(postcard, { translateY: [-166, 0], duration: timing.printDuration }, timing.printStart);
       }
+      const update = (progress: number) => {
+        setStage(getStage(progress));
+        selectedPresentationIndex = getBufferedPresentationIndex(progress, selectedPresentationIndex);
+        setPresentationIndex(selectedPresentationIndex);
+        if (reduced) {
+          // Discrete states preserve the story without movement through space.
+          coin.style.opacity = progress < timing.coinInserted / timing.duration ? "1" : "0";
+          postcard.style.transform = progress >= timing.printStart / timing.duration
+            ? "translateY(0px)" : "translateY(-166px)";
+        }
+      };
       const observer = onScroll({
         target: container,
         enter: "top top",
         leave: "bottom bottom",
         sync: true,
-        onUpdate: (self) => {
-          setStage(getStage(self.progress));
-          if (reduced) {
-            // Discrete states preserve the story without movement through space.
-            coin.style.opacity = self.progress < timing.coinInserted / timing.duration ? "1" : "0";
-            postcard.style.transform = self.progress >= timing.printStart / timing.duration
-              ? "translateY(0px)" : "translateY(-166px)";
-          }
-        },
+        onUpdate: (self) => update(self.progress),
       });
       observer.link(timeline);
+      update(observer.progress);
       timeline.seek(observer.progress * timing.duration);
       const ambient = reduced ? [] : [
         animate(container.querySelectorAll("[data-cloud]"), {
@@ -71,5 +78,5 @@ export function useScrollAnimation() {
     return () => { dispose(); media.removeEventListener("change", setup); };
   }, []);
 
-  return { containerRef, stage };
+  return { containerRef, presentationIndex, stage };
 }

@@ -1,8 +1,14 @@
 "use client";
 
-import { type ChangeEvent, type RefObject, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { parseUsdAmount, validatePhotoSelection } from "../clientCheckoutDraft";
+import {
+  INITIAL_CHECKOUT_LIMITS,
+  formatUsdInput,
+  parseUsdAmount,
+  validatePhotoSelection,
+} from "../clientCheckoutDraft";
+import { submitCheckoutAmount } from "../checkoutIntentClient";
 import { CheckoutAmountStep } from "./CheckoutAmountStep";
 import { CheckoutPhotoStep, type LocalPhotoPreview } from "./CheckoutPhotoStep";
 import { CheckoutReviewStep } from "./CheckoutReviewStep";
@@ -23,18 +29,29 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   const replaceIndexRef = useRef<number | null>(null);
   const nextPhotoId = useRef(0);
   const photosRef = useRef<LocalPhotoPreview[]>([]);
+  const requestControllerRef = useRef<AbortController | null>(null);
   const [step, setStep] = useState(1);
   const [amountCents, setAmountCents] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState("");
   const [amountError, setAmountError] = useState<string | null>(null);
+  const [amountPending, setAmountPending] = useState(false);
+  const [limits, setLimits] = useState(INITIAL_CHECKOUT_LIMITS);
   const [photos, setPhotos] = useState<LocalPhotoPreview[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => () => {
+    requestControllerRef.current?.abort();
     photosRef.current.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
   }, []);
+
+  const closeModal = useCallback(() => {
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+    setAmountPending(false);
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +64,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closeModal();
         return;
       }
       if (event.key === "Tab") {
@@ -71,7 +88,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
       document.body.style.overflow = previousOverflow;
       trigger?.focus();
     };
-  }, [onClose, open, triggerRef]);
+  }, [closeModal, open, triggerRef]);
 
   const commitPhotos = (next: LocalPhotoPreview[]) => {
     photosRef.current = next;
@@ -80,7 +97,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   const acceptFiles = (selected: File[], replaceIndex: number | null) => {
     const incoming = replaceIndex === null ? selected : selected.slice(0, 1);
     const remaining = replaceIndex === null ? photos : photos.filter((_, index) => index !== replaceIndex);
-    const result = validatePhotoSelection(remaining.map(({ file }) => file), incoming);
+    const result = validatePhotoSelection(remaining.map(({ file }) => file), incoming, limits);
     if (result.error) {
       setPhotoError(result.error);
       return;
@@ -114,7 +131,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   };
   const onCustomAmount = (value: string) => {
     setCustomAmount(value);
-    const result = parseUsdAmount(value);
+    const result = parseUsdAmount(value, limits.minimumAmountCents);
     setAmountCents(result.cents);
     setAmountError(result.error);
   };
@@ -123,6 +140,34 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
     setAmountCents(cents);
     setAmountError(null);
   };
+  const saveAmount = async () => {
+    if (amountCents === null || requestControllerRef.current) return;
+    const submittedAmountCents = amountCents;
+    const usedCustomAmount = customAmount !== "";
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    setAmountPending(true);
+    setAmountError(null);
+    try {
+      const result = await submitCheckoutAmount(submittedAmountCents, { signal: controller.signal });
+      if (requestControllerRef.current !== controller) return;
+      if (!result.ok) {
+        setAmountError(result.message);
+        return;
+      }
+      setAmountCents(result.value.amountCents);
+      setLimits(result.value.limits);
+      if (usedCustomAmount || result.value.amountCents !== submittedAmountCents) {
+        setCustomAmount(formatUsdInput(result.value.amountCents));
+      }
+      setStep(2);
+    } finally {
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setAmountPending(false);
+      }
+    }
+  };
 
   if (!open) return null;
   return createPortal(
@@ -130,7 +175,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
       <div aria-labelledby="checkout-modal-title" aria-modal="true" className="checkout-paper" ref={dialogRef} role="dialog">
         <span className="paper-tape paper-tape-left" aria-hidden="true" />
         <span className="paper-tape paper-tape-right" aria-hidden="true" />
-        <button aria-label="Close checkout preview" className="modal-close" data-initial-focus onClick={onClose} type="button">×</button>
+        <button aria-label="Close checkout preview" className="modal-close" data-initial-focus onClick={closeModal} type="button">×</button>
         <ol aria-label="Checkout preview progress" className="step-progress">
           {[1, 2, 3].map((number) => <li aria-current={step === number ? "step" : undefined} key={number}>{number}</li>)}
         </ol>
@@ -138,12 +183,15 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
           amountCents={amountCents}
           customAmount={customAmount}
           error={amountError}
+          minimumAmountCents={limits.minimumAmountCents}
           onCustomAmount={onCustomAmount}
           onPreset={choosePreset}
+          pending={amountPending}
         />}
         {step === 2 && <CheckoutPhotoStep
           error={photoError}
           inputRef={inputRef}
+          limits={limits}
           note={note}
           onChoose={onChoose}
           onDrop={(files) => acceptFiles(files, null)}
@@ -161,10 +209,10 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
           {step > 1 && <button className="back-button" onClick={() => setStep(step - 1)} type="button">Back</button>}
           {step < 3 && <button
             className="continue-button"
-            disabled={step === 1 ? amountCents === null : photos.length === 0}
-            onClick={() => setStep(step + 1)}
+            disabled={step === 1 ? amountCents === null || amountPending : photos.length === 0}
+            onClick={() => { if (step === 1) void saveAmount(); else setStep(step + 1); }}
             type="button"
-          >Continue</button>}
+          >{step === 1 && amountPending ? "Saving your amount…" : "Continue"}</button>}
         </div>
         <p aria-live="polite" className="modal-notice">{notice}</p>
       </div>

@@ -44,7 +44,7 @@ async function navigate(theme = "day") {
 }
 async function scroll(progress) {
   await evaluate(`window.scrollTo(0, (document.documentElement.scrollHeight - innerHeight) * ${progress})`);
-  await delay(220);
+  await delay(450);
 }
 async function openModal() {
   await scroll(1);
@@ -82,6 +82,41 @@ try {
   assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-final-cta]")).visibility'), "visible");
   console.log("PASS narrative timing, final CTA reveal, and exact reverse scroll");
 
+  await evaluate(`(() => {
+    window.__checkoutRequests = [];
+    window.__checkoutPending = [];
+    window.__checkoutStartUrl = location.href;
+    window.fetch = (url, options = {}) => {
+      window.__checkoutRequests.push({
+        body: options.body,
+        cache: options.cache,
+        credentials: options.credentials,
+        headers: Object.fromEntries(new Headers(options.headers)),
+        method: options.method,
+        url: String(url),
+      });
+      return new Promise((resolve, reject) => window.__checkoutPending.push({ reject, resolve }));
+    };
+    window.__replyCheckout = (status, amountCents = 1000, minimumAmountCents = 500) => {
+      const pending = window.__checkoutPending.shift();
+      const body = status === 200 || status === 201 ? {
+        amountCents,
+        expiresAt: '2026-09-22T12:00:00.000Z',
+        limits: {
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+          maxFileBytes: 15 * 1024 * 1024,
+          maxFiles: 3,
+          maxTotalBytes: 30 * 1024 * 1024,
+          minimumAmountCents,
+        },
+        status: 'draft',
+        uploads: [],
+      } : { error: { code: status === 400 ? 'INVALID_AMOUNT' : 'INTERNAL_ERROR' } };
+      pending.resolve(new Response(JSON.stringify(body), {
+        headers: { 'Content-Type': 'application/json' }, status,
+      }));
+    };
+  })()`);
   await openModal();
   const opening = await evaluate(`(() => ({
     bodyOverflow: document.body.style.overflow,
@@ -106,9 +141,74 @@ try {
   await delay(30);
   assert.equal(await evaluate(`document.querySelector('.modal-actions .continue-button').disabled`), true);
   assert.match(await evaluate(`document.querySelector('.field-error').textContent`), /at least \$5\.00/);
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 0);
   await evaluate(`[...document.querySelectorAll('.amount-preset')].find((node) => node.textContent.trim() === '$10').click()`);
   assert.equal(await evaluate(`document.querySelector('.modal-actions .continue-button').disabled`), false);
-  await evaluate(`document.querySelector('.modal-actions .continue-button').click()`);
+  await evaluate(`(() => {
+    const button = document.querySelector('.modal-actions .continue-button');
+    button.click(); button.click();
+  })()`);
+  await delay(30);
+  assert.deepEqual(await evaluate(`(() => ({
+    calls: window.__checkoutRequests.length,
+    controlsDisabled: [...document.querySelectorAll('.amount-preset, .amount-input-wrap input')].every((node) => node.disabled),
+    forwardDisabled: document.querySelector('.continue-button').disabled,
+    label: document.querySelector('.continue-button').textContent,
+    step: document.querySelector('#checkout-modal-title').textContent,
+  }))()`), {
+    calls: 1, controlsDisabled: true, forwardDisabled: true,
+    label: "Saving your amount…", step: "Choose your amount",
+  });
+  assert.deepEqual(await evaluate(`window.__checkoutRequests[0]`), {
+    body: JSON.stringify({ amountCents: 1000 }),
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    method: "POST",
+    url: "/api/storefront/checkout-intents",
+  });
+  await evaluate(`window.__replyCheckout(400)`);
+  await delay(50);
+  assert.deepEqual(await evaluate(`(() => ({
+    amountKept: [...document.querySelectorAll('.amount-preset')].find((node) => node.textContent.trim() === '$10').getAttribute('aria-pressed'),
+    error: document.querySelector('.field-error').textContent,
+    forwardDisabled: document.querySelector('.continue-button').disabled,
+    step: document.querySelector('#checkout-modal-title').textContent,
+  }))()`), {
+    amountKept: "true", error: "Check the amount and try again.",
+    forwardDisabled: false, step: "Choose your amount",
+  });
+  await evaluate(`(() => {
+    const button = document.querySelector('.modal-actions .continue-button');
+    button.click(); button.click();
+  })()`);
+  await delay(30);
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 2);
+  await evaluate(`window.__replyCheckout(201, 1050, 700)`);
+  await delay(80);
+  assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Add your photos");
+  await evaluate(`document.querySelector('.back-button').click()`);
+  assert.deepEqual(await evaluate(`(() => ({
+    help: document.querySelector('#amount-help').textContent,
+    value: document.querySelector('.amount-input-wrap input').value,
+  }))()`), { help: "Minimum $7.00 · dollars and cents only", value: "10.50" });
+  await evaluate(`(() => {
+    const input = document.querySelector('.amount-input-wrap input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, '12.50');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await delay(30);
+  await evaluate(`document.querySelector('.continue-button').click()`);
+  await delay(30);
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 3);
+  assert.equal(await evaluate(`window.__checkoutRequests[2].body`), JSON.stringify({ amountCents: 1250 }));
+  await evaluate(`window.__replyCheckout(200, 1250, 700)`);
+  await delay(80);
+  assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Add your photos");
+  assert.equal(await evaluate(`location.href === window.__checkoutStartUrl`), true);
+  assert.equal(await evaluate(`/intentId|accessToken|tokenHash|checkoutSession|storage/i.test(document.querySelector('[role=dialog]').textContent + location.href)`), false);
+  console.log("PASS exact amount request, single-flight loading, safe error retry, and new/resumed Intent responses");
   await evaluate(`(() => {
     const transfer = new DataTransfer();
     transfer.items.add(new File(['x'], 'not-shown.gif', { type: 'image/gif' }));
@@ -167,12 +267,13 @@ try {
   }))()`);
   assert.equal(review.heading, "Ready for the press?");
   assert.equal(review.photoCount, "2 photos");
-  assert.match(review.totals, /Your amount\$10\.00/);
+  assert.match(review.totals, /Your amount\$12\.50/);
   assert.match(review.totals, /Shipping\$1\.00/);
-  assert.match(review.totals, /Total\$11\.00/);
+  assert.match(review.totals, /Total\$13\.50/);
   await evaluate(`(() => {
     window.__clientCalls = 0;
-    window.fetch = () => { window.__clientCalls += 1; return Promise.reject(new Error('unexpected fetch')); };
+    const fetch = window.fetch;
+    window.fetch = (...args) => { window.__clientCalls += 1; return fetch(...args); };
     const open = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (...args) { window.__clientCalls += 1; return open.apply(this, args); };
     navigator.sendBeacon = () => { window.__clientCalls += 1; return false; };
@@ -180,6 +281,7 @@ try {
   })()`);
   await delay(50);
   assert.equal(await evaluate(`window.__clientCalls`), 0);
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 3);
   assert.match(await evaluate(`document.querySelector('.modal-notice').textContent`), /not connected yet/);
   await screenshot("checkout-modal-desktop");
   await evaluate(`document.querySelector('.modal-close').click()`);
@@ -198,7 +300,7 @@ try {
   assert.equal(await evaluate(`document.activeElement.getAttribute('aria-label')`), "Close checkout preview");
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   assert.equal(await evaluate(`document.activeElement.textContent.includes('Draw Me One')`), true);
-  console.log("PASS modal validation, local previews, review math, no-submit action, focus trap, Escape, restoration, scroll lock, and session state");
+  console.log("PASS local previews, authoritative review math, no-submit final action, focus trap, Escape, restoration, scroll lock, and session state");
 
   for (const [width, height, theme] of [[390, 844, "night"], [844, 390, "day"]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });

@@ -4,15 +4,18 @@ type Props = {
   amountCents: number | null;
   customAmount: string;
   error: string | null;
+  minimumAmountCents: number;
   onCustomAmount: (value: string) => void;
   onPreset: (cents: number) => void;
+  pending: boolean;
 };
 
 const PRESETS = [500, 1000, 2000] as const;
 
-export function CheckoutAmountStep({ amountCents, customAmount, error, onCustomAmount, onPreset }: Props) {
+export function CheckoutAmountStep(props: Props) {
+  const { amountCents, customAmount, error, minimumAmountCents, onCustomAmount, onPreset, pending } = props;
   return (
-    <section className="checkout-step" aria-labelledby="checkout-modal-title">
+    <section aria-busy={pending} className="checkout-step" aria-labelledby="checkout-modal-title">
       <p className="step-kicker">Step 1 of 3 · The little gold coin</p>
       <h2 id="checkout-modal-title">Choose your amount</h2>
       <p className="step-intro">Set the price that feels right for your handmade postcard.</p>
@@ -23,6 +26,7 @@ export function CheckoutAmountStep({ amountCents, customAmount, error, onCustomA
             <button
               aria-pressed={amountCents === cents && customAmount === ""}
               className="amount-preset"
+              disabled={pending || cents < minimumAmountCents}
               key={cents}
               onClick={() => onPreset(cents)}
               type="button"
@@ -37,6 +41,7 @@ export function CheckoutAmountStep({ amountCents, customAmount, error, onCustomA
         <span className="amount-input-wrap"><span aria-hidden="true">$</span>
           <input
             aria-describedby="amount-help amount-error"
+            disabled={pending}
             inputMode="decimal"
             onChange={(event) => onCustomAmount(event.target.value)}
             placeholder="5.00"
@@ -44,7 +49,7 @@ export function CheckoutAmountStep({ amountCents, customAmount, error, onCustomA
           />
         </span>
       </label>
-      <p id="amount-help" className="field-help">Minimum $5.00 · dollars and cents only</p>
+      <p id="amount-help" className="field-help">Minimum {formatUsd(minimumAmountCents)} · dollars and cents only</p>
       <p id="amount-error" className="field-error" role={error ? "alert" : undefined}>{error ?? "\u00a0"}</p>
     </section>
   );

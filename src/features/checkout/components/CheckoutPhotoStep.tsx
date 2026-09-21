@@ -1,10 +1,16 @@
 import type { ChangeEvent, DragEvent, RefObject } from "react";
+import {
+  formatAllowedPhotoTypes,
+  formatBytesAsMebibytes,
+  type CheckoutLimits,
+} from "../clientCheckoutDraft";
 
 export type LocalPhotoPreview = { file: File; id: number; previewUrl: string };
 
 type Props = {
   error: string | null;
   inputRef: RefObject<HTMLInputElement | null>;
+  limits: CheckoutLimits;
   note: string;
   onChoose: (event: ChangeEvent<HTMLInputElement>) => void;
   onDrop: (files: File[]) => void;
@@ -15,7 +21,7 @@ type Props = {
 };
 
 export function CheckoutPhotoStep(props: Props) {
-  const { error, inputRef, note, onChoose, onDrop, onOpenPicker, onRemove, photos, setNote } = props;
+  const { error, inputRef, limits, note, onChoose, onDrop, onOpenPicker, onRemove, photos, setNote } = props;
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     onDrop(Array.from(event.dataTransfer.files));
@@ -30,10 +36,10 @@ export function CheckoutPhotoStep(props: Props) {
         <strong>Drop photos onto the paper</strong>
         <span>or</span>
         <button onClick={() => onOpenPicker(null)} type="button">Choose photos</button>
-        <small>JPEG, PNG, or WebP · 15 MiB each · 30 MiB total</small>
+        <small>{formatAllowedPhotoTypes(limits.allowedMimeTypes)} · {formatBytesAsMebibytes(limits.maxFileBytes)} each · {formatBytesAsMebibytes(limits.maxTotalBytes)} total</small>
       </div>
       <input
-        accept="image/jpeg,image/png,image/webp"
+        accept={limits.allowedMimeTypes.join(",")}
         className="visually-hidden-input"
         multiple
         onChange={onChoose}

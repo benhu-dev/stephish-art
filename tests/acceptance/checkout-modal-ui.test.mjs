@@ -38,14 +38,14 @@ test("local photo rules accept only one to three bounded raster previews", () =>
   );
 });
 
-test("modal contract is client-only, keyboard accessible, and deliberately non-submitting", async () => {
-  const paths = [
-    "src/features/checkout/components/ArtisticCheckoutModal.tsx",
-    "src/features/checkout/components/CheckoutAmountStep.tsx",
-    "src/features/checkout/components/CheckoutPhotoStep.tsx",
-    "src/features/checkout/components/CheckoutReviewStep.tsx",
-  ];
-  const joined = (await Promise.all(paths.map(read))).join("\n");
+test("modal is keyboard accessible while photos, review, and final action remain local", async () => {
+  const [modal, amount, photo, review] = await Promise.all([
+    read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
+    read("src/features/checkout/components/CheckoutAmountStep.tsx"),
+    read("src/features/checkout/components/CheckoutPhotoStep.tsx"),
+    read("src/features/checkout/components/CheckoutReviewStep.tsx"),
+  ]);
+  const joined = [modal, amount, photo, review].join("\n");
   for (const text of [
     "Choose your amount",
     "Add your photos",
@@ -60,8 +60,9 @@ test("modal contract is client-only, keyboard accessible, and deliberately non-s
   assert.match(joined, /trigger\?\.focus/);
   assert.match(joined, /URL\.createObjectURL/);
   assert.match(joined, /URL\.revokeObjectURL/);
+  assert.match(modal, /submitCheckoutAmount/);
   assert.match(joined, /type=["']button["'][^>]*>\s*Continue to Secure Checkout/s);
-  assert.equal(/fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|payload\.|stripe/i.test(joined), false);
+  assert.equal(/fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|payload\.|stripe/i.test(`${photo}\n${review}`), false);
 });
 
 test("art direction covers focus, themes, reduced motion, and both mobile orientations", async () => {

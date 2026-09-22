@@ -1,4 +1,7 @@
 import {
+  MAX_PHOTO_BYTES,
+  MAX_PHOTO_COUNT,
+  MAX_TOTAL_PHOTO_BYTES,
   SUPPORTED_PHOTO_MIME_TYPES,
   type CheckoutLimits,
 } from "./clientCheckoutDraft";
@@ -9,8 +12,11 @@ const GENERIC_ERROR = "We couldn't save your amount right now. Please try again.
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type SubmitOptions = { fetchImpl?: FetchLike; signal?: AbortSignal };
 type SubmissionResult =
-  | { ok: true; value: { amountCents: number; limits: CheckoutLimits } }
+  | { ok: true; value: SafeIntentState & { created: boolean } }
   | { message: string; ok: false };
+
+export type SafeUpload = { id: number; position: number; mimeType: string | null; sizeBytes: number | null };
+export type SafeIntentState = { amountCents: number; limits: CheckoutLimits; uploads: SafeUpload[] };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43,6 +49,9 @@ const parseLimits = (value: unknown): CheckoutLimits | null => {
     || !isPositiveInteger(value.maxFileBytes)
     || !isPositiveInteger(value.maxFiles)
     || !isPositiveInteger(value.maxTotalBytes)
+    || value.maxFileBytes > MAX_PHOTO_BYTES
+    || value.maxFiles > MAX_PHOTO_COUNT
+    || value.maxTotalBytes > MAX_TOTAL_PHOTO_BYTES
     || value.maxTotalBytes < value.maxFileBytes
     || !isPositiveInteger(value.minimumAmountCents)
   ) return null;
@@ -55,19 +64,18 @@ const parseLimits = (value: unknown): CheckoutLimits | null => {
   };
 };
 
-const hasValidUploads = (value: unknown, limits: CheckoutLimits) =>
+const hasValidUploads = (value: unknown, limits: CheckoutLimits): value is SafeUpload[] =>
   Array.isArray(value) && value.length <= limits.maxFiles && value.every((upload) => {
     if (!isRecord(upload) || !hasExactKeys(upload, ["id", "mimeType", "position", "sizeBytes"])) return false;
-    const validId = isPositiveInteger(upload.id)
-      || (typeof upload.id === "string" && upload.id.length > 0);
+    const validId = isPositiveInteger(upload.id);
     const validMime = upload.mimeType === null
       || (typeof upload.mimeType === "string" && limits.allowedMimeTypes.includes(upload.mimeType));
     const validSize = upload.sizeBytes === null || isPositiveInteger(upload.sizeBytes);
     return validId && validMime && validSize
       && isPositiveInteger(upload.position) && upload.position <= limits.maxFiles;
-  });
+  }) && new Set(value.map((upload: SafeUpload) => upload.position)).size === value.length;
 
-const parseSafeResponse = (value: unknown) => {
+export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
   if (!isRecord(value)) return null;
   const baseKeys = ["amountCents", "expiresAt", "limits", "status", "uploads"];
   const snapshotKeys = [...baseKeys, "shippingAmountCents", "totalAmountCents"];
@@ -91,7 +99,7 @@ const parseSafeResponse = (value: unknown) => {
       || value.totalAmountCents !== value.amountCents + value.shippingAmountCents
     ) return null;
   }
-  return { amountCents: value.amountCents, limits };
+  return { amountCents: value.amountCents, limits, uploads: value.uploads };
 };
 
 const errorMessage = (status: number) => {
@@ -123,7 +131,7 @@ export async function submitCheckoutAmount(
       return { message: errorMessage(response.status), ok: false };
     }
     const value = parseSafeResponse(await response.json());
-    return value ? { ok: true, value } : { message: GENERIC_ERROR, ok: false };
+    return value ? { ok: true, value: { ...value, created: response.status === 201 } } : { message: GENERIC_ERROR, ok: false };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       return { message: "Saving was cancelled. Please try again.", ok: false };

@@ -72,7 +72,7 @@ test("new Intent request has the exact cookie-authenticated no-store contract", 
   assert.deepEqual(JSON.parse(calls[0][1].body), { amountCents: 825 });
 });
 
-test("201 and 200 both return only authoritative amount and limits", async () => {
+test("201 and 200 return only authoritative amount, limits, safe uploads, and creation state", async () => {
   for (const status of [201, 200]) {
     const body = responseBody({ amountCents: 900, minimumAmountCents: 700 });
     const result = await submitCheckoutAmount(825, {
@@ -80,9 +80,9 @@ test("201 and 200 both return only authoritative amount and limits", async () =>
     });
     assert.deepEqual(result, {
       ok: true,
-      value: { amountCents: 900, limits: body.limits },
+      value: { amountCents: 900, limits: body.limits, uploads: [], created: status === 201 },
     });
-    assert.equal(/expiresAt|uploads|status|id|token|hash/i.test(JSON.stringify(result)), false);
+    assert.equal(/expiresAt|status|token|hash/i.test(JSON.stringify(result)), false);
   }
 });
 
@@ -133,13 +133,15 @@ test("network, authorization, validation, and server failures stay safe and retr
   assert.equal(results.slice(0, 5).some(({ message }) => /private|UNAUTHORIZED|INVALID_AMOUNT|AMOUNT_BELOW_MINIMUM|INTERNAL_ERROR/.test(message)), false);
 });
 
-test("modal wires only Step 1 to the Intent client and keeps later actions local", async () => {
+test("modal wires amount and photo steps while final Checkout stays local", async () => {
   const [modal, photo, review] = await Promise.all([
     read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
     read("src/features/checkout/components/CheckoutPhotoStep.tsx"),
     read("src/features/checkout/components/CheckoutReviewStep.tsx"),
   ]);
   assert.match(modal, /submitCheckoutAmount/);
+  assert.match(modal, /uploadPhoto/);
+  assert.match(modal, /deletePhoto/);
   assert.match(modal, /Saving your amount…/);
   assert.match(modal, /requestControllerRef/);
   assert.doesNotMatch(`${photo}\n${review}`, /fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|stripe/i);

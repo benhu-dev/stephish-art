@@ -77,14 +77,17 @@
 .photo-preview-list li { width: min(31%, 130px); padding: 5px; background: #fff9e8; box-shadow: 2px 3px 0 #253a3029; transform: rotate(-1deg); }
 .photo-preview-list li:nth-child(2) { transform: rotate(1.5deg); }
 .photo-preview-list img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.uploaded-photo-placeholder { display: grid; place-content: center; width: 100%; aspect-ratio: 4 / 3; border: 2px dashed #a56a7c; color: #304739; background: #f4e6c7; text-align: center; font: 700 10px/1.5 Arial, sans-serif; }
+.photo-progress { min-height: 14px; margin: 7px 0 0; text-align: center; font: 700 10px/1.35 Arial, sans-serif; }
 .photo-preview-list span { display: block; margin: 4px 0; color: #304739; text-align: center; font: 9px/1 Arial, sans-serif; }
-.photo-preview-list div { display: flex; justify-content: center; gap: 6px; }
+.photo-preview-list li > div:last-child { display: flex; justify-content: center; gap: 6px; }
 .photo-preview-list button { border: 0; padding: 2px; color: #763d52; background: transparent; font: 700 9px/1 Arial, sans-serif; text-decoration: underline; cursor: pointer; }
 .private-note { display: block; margin-top: 8px; font: 700 11px/1.4 Arial, sans-serif; }
 .private-note span { font-weight: 400; }
 .private-note textarea { display: block; width: 100%; min-height: 52px; margin-top: 4px; resize: vertical; border: 1px solid currentColor; padding: 7px; color: inherit; background: transparent; font: 13px/1.35 Georgia, serif; }
 .review-photos { position: relative; display: flex; justify-content: center; min-height: 112px; margin: 4px auto 15px; }
 .review-photos img { width: 120px; aspect-ratio: 4 / 3; margin: 0 -7px; border: 5px solid #fff9e8; object-fit: cover; box-shadow: 2px 3px 0 #1f332a22; transform: rotate(-3deg); }
+.review-photos .uploaded-photo-placeholder { width: 120px; height: 90px; margin: 0 -7px; border: 5px solid #fff9e8; box-shadow: 2px 3px 0 #1f332a22; transform: rotate(-3deg); }
 .review-photos img:nth-child(2) { transform: rotate(2deg); }
 .review-photos span { position: absolute; right: 10%; bottom: -4px; padding: 3px 7px; color: #304739; background: #e4c07c; font: 700 10px/1 Arial, sans-serif; transform: rotate(-2deg); }
 .review-totals { max-width: 400px; margin: auto; font: 13px/1.4 Arial, sans-serif; }

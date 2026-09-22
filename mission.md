@@ -1,132 +1,110 @@
-# Phase 2 — Unit 2.11: Connect the Amount Step
+# Phase 2 — Unit 2.12.1: Fix Orphaned Upload Deletion
 
 ## Goal
 
-Connect the artistic checkout modal’s amount step to the existing controlled Checkout Intent API.
+Fix the confirmed defect where deleting an uploaded photo removes its `order_uploads` row and returns `204`, but leaves the corresponding object in the private `order-uploads` bucket.
 
-This Unit ends after a Checkout Intent is successfully created or resumed. Do not upload photos or start Stripe Checkout yet.
+Do not implement new functionality.
 
-## Preflight
+## Confirmed State
 
-* Record the starting HEAD and Git status.
-* Confirm Unit 2.10 and its transition refinements are committed.
-* Stop on unrelated changes other than the intentional `mission.md`.
-* Do not read, print, or modify environment values.
+The current user-owned state is:
 
-## Amount Submission
+* One Checkout Intent
+* One `order_uploads` row for Photo 2
+* Two private Storage objects
+* Photo 2 object: `ccc31af8-62e7-4aa0-9e20-1486486db15c.jpg`
+* Suspected orphaned Photo 1 object: `5b8cc125-f590-4847-ae5a-43c7b247c5ca.png`
 
-When the user submits the first modal step:
+The app and database correctly retain only Photo 2. Do not delete or modify Photo 2, its row, or its owning Intent.
 
-* Validate the dollar input locally.
-* Convert it to integer cents without floating-point rounding.
-* Send exactly:
+## Investigation
 
-`POST /api/storefront/checkout-intents`
+Reproduce and identify the exact root cause before changing code.
 
-with JSON:
+Inspect:
 
-`{"amountCents": <positive integer>}`
+* The object key stored on the upload record
+* The key passed to the S3/Supabase deletion operation
+* Whether a URL, filename, encoded path, or incorrect prefix is being used
+* Whether the storage delete operation reports success when the wrong or nonexistent key is supplied
+* Whether the endpoint commits the database deletion without confirming object removal
 
-Use same-origin credentials, `Content-Type: application/json`, and `cache: no-store`.
+Add a red-first regression that fails against the current implementation and exercises real private Storage behavior rather than only a mocked successful delete.
 
-Do not send any extra fields.
+## Required Fix
 
-Examples:
+A successful DELETE must guarantee:
 
-* `$5` → `500`
-* `$8.25` → `825`
-* `$12.50` → `1250`
+1. The owning upload record is locked and validated.
+2. The exact persisted Storage object key is used.
+3. The intended private object is removed.
+4. Object absence is verified.
+5. The database row is deleted only as part of the existing safe transactional flow.
+6. `204` is returned only when both the row and object are gone.
 
-Reject empty, malformed, negative, zero, scientific notation, commas, and values with more than two decimal places before making a request.
+If object deletion fails or the object remains:
 
-The server remains authoritative for the current minimum. Keep the existing `$5` initial UI guidance, but accept and display safe server validation if the configured minimum differs. Do not add a settings endpoint or hardcode backend policy into a new location.
-
-## Success Behavior
-
-Treat both responses as success:
-
-* `201` — new Intent
-* `200` — existing draft Intent resumed
-
-Strictly validate the existing safe response contract.
-
-After success:
-
-* Use the server-returned `amountCents`.
-* Update the displayed minimum and limits from the safe response when provided.
-* Advance to the photo step.
-* Preserve the existing artistic transition and modal styling.
-* Keep all credentials inside the existing HttpOnly cookie.
-* Do not read or expose the cookie, Intent ID, token, hash, Storage information, or internal metadata.
-
-If the user goes back and changes the amount, submit it again before advancing. The existing backend must resume the same eligible draft Intent.
-
-## Loading and Errors
-
-* Prevent double submission and overlapping requests.
-* Disable the forward action while the request is pending.
-* Show a restrained in-style loading state such as `Saving your amount…`.
-* Keep the user on the amount step after validation, network, unauthorized, or server errors.
-* Show safe, understandable inline messages without stack traces or internal error details.
+* Do not permanently delete the database row.
+* Preserve or restore the consistent pre-request state.
+* Return a safe error.
 * Allow retry.
-* Do not discard the entered amount after a failed request.
-* Restore normal controls after completion or failure.
 
-Do not display a fake success state when the request fails.
+If database deletion fails after object removal, preserve the existing restoration guarantee.
 
-## Remaining Modal Steps
+Do not weaken ownership, cookie, origin, transaction, or private Storage controls.
 
-Keep the existing photo and review interfaces client-only for this Unit.
+## Existing Orphan Cleanup
 
-* Do not upload or delete files.
-* Do not create a Checkout Session.
-* The final Stripe action must remain visibly unavailable or non-operative.
-* Do not create Customers or Orders.
-* Do not change the existing local preview lifecycle.
+After the root cause is proven and fixed, removal of this exact object is authorized only if all checks confirm it is unreferenced:
 
-## Focused Verification
+`5b8cc125-f590-4847-ae5a-43c7b247c5ca.png`
 
-Add focused tests for:
+Before removing it, verify:
 
-* Exact dollar-to-cent conversion.
-* Invalid values make zero requests.
-* Exact request method, URL, headers, credentials, and JSON body.
-* `201` creates the ready state and advances once.
-* `200` resumes and advances once.
-* Server-returned amount and limits become authoritative.
-* Double-clicking makes one request.
-* Loading state and disabled controls.
-* Validation, network, `401`, `400`, and `5xx` failures remain on the amount step and can retry.
-* No credential or internal identifier appears in the DOM, state, URL, logs, or error copy.
-* Going back and changing the amount submits the updated cents.
-* Photo selection remains local-only.
-* The final action makes no Stripe or upload request.
-* Modal accessibility, focus behavior, themes, responsive layouts, and narrative scene remain unchanged.
+* No `order_uploads` row references its exact key or filename.
+* No Order or other record references it.
+* It is the confirmed Photo 1 object from this manual test.
 
-Run only:
+Do not delete any other pre-existing object.
 
-* Focused Unit 2.11 tests
-* Existing Unit 2.10 modal and scene regressions
-* TypeScript
-* ESLint
-* Production build
+Expected retained user-owned state after cleanup:
 
-Do not run database, Storage, webhook, Stripe lifecycle, or unrelated backend suites.
+* One Checkout Intent
+* One upload row for Photo 2
+* One Storage object: `ccc31af8-62e7-4aa0-9e20-1486486db15c.jpg`
 
-## Excluded Work
+## Verification
+
+Run focused checks only:
+
+* Upload two uniquely named synthetic images.
+* Delete position 1 through the real endpoint.
+* Confirm its row and exact Storage object are both gone.
+* Confirm position 2 row and object remain unchanged.
+* Confirm repeated Storage listing or HEAD checks cannot find the deleted object.
+* Confirm failed or incorrect-key deletion cannot commit the row deletion.
+* Confirm retry succeeds.
+* Clean all synthetic fixtures.
+* Confirm the retained user-owned Photo 2 row and object are unchanged.
+* Run the existing Unit 2.12 deletion/client regression.
+* Run TypeScript, ESLint, and production build.
+
+Do not run Stripe, webhook, Customer, Order, scene, or unrelated suites.
+
+## Restrictions
 
 Do not change:
 
-* Backend endpoint behavior
-* Photo upload integration
-* Upload deletion
-* Stripe Checkout Session integration
-* Success or cancellation pages
-* Customer or Order creation
+* Frontend UX except if required to handle the corrected error response
+* Upload creation behavior
+* Position behavior
+* Private preview behavior
+* Stripe
 * Schemas or migrations
 * Dependencies
 * Environment files
-* Narrative copy, animation timing, or scene artwork
+* General cleanup jobs
 
 Do not commit or push.
 
@@ -134,10 +112,12 @@ Do not commit or push.
 
 Report:
 
-* Starting and ending HEAD
-* Request and amount-conversion contract
-* Loading, retry, and error behavior
-* New-versus-resumed Intent behavior
-* Focused validation results
-* Files changed and final Git status
-* Confirmation that no upload, Stripe, backend, schema, migration, dependency, or environment change was introduced
+* Confirmed root cause
+* Exact fix
+* Red-first regression evidence
+* Real database and Storage deletion evidence
+* Existing orphan cleanup evidence
+* Final retained user-owned rows and objects
+* Files changed
+* Validation results
+* Final Git status

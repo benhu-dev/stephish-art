@@ -1,7 +1,8 @@
 import { SHIPPING_AMOUNT_CENTS, formatUsd } from "../clientCheckoutDraft";
-import type { LocalPhotoPreview } from "./CheckoutPhotoStep";
+import { formatBytesAsMebibytes } from "../clientCheckoutDraft";
+import type { PhotoEntry } from "./CheckoutPhotoStep";
 
-type Props = { amountCents: number; onFinish: () => void; photos: LocalPhotoPreview[] };
+type Props = { amountCents: number; onFinish: () => void; photos: PhotoEntry[] };
 
 export function CheckoutReviewStep({ amountCents, onFinish, photos }: Props) {
   return (
@@ -10,10 +11,13 @@ export function CheckoutReviewStep({ amountCents, onFinish, photos }: Props) {
       <h2 id="checkout-modal-title">Ready for the press?</h2>
       <p className="step-intro">Here is the postcard plan you made in this preview.</p>
       <div className="review-photos">
-        {photos.map((photo, index) => (
+        {photos.map((photo) => photo.local ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img alt={`Photo ${index + 1} preview`} key={photo.id} src={photo.previewUrl} />
-        ))}
+          <img alt={`Photo ${photo.position} preview`} key={photo.position} src={photo.local.previewUrl} />
+        ) : <div className="uploaded-photo-placeholder" key={photo.position}>
+          Photo {photo.position}<br />{photo.server?.mimeType?.split("/")[1]?.toUpperCase() ?? "Photo"}<br />
+          {photo.server?.sizeBytes == null ? "Private" : formatBytesAsMebibytes(photo.server.sizeBytes)}
+        </div>)}
         <span>{photos.length} {photos.length === 1 ? "photo" : "photos"}</span>
       </div>
       <dl className="review-totals">

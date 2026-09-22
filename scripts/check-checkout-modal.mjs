@@ -116,6 +116,27 @@ try {
         headers: { 'Content-Type': 'application/json' }, status,
       }));
     };
+    window.__photoState = (positions) => ({
+      amountCents: 1250,
+      expiresAt: '2026-09-22T12:00:00.000Z',
+      limits: {
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        maxFileBytes: 15 * 1024 * 1024,
+        maxFiles: 3,
+        maxTotalBytes: 30 * 1024 * 1024,
+        minimumAmountCents: 700,
+      },
+      status: 'draft',
+      uploads: positions.map((position) => ({ id: 100 + position, position, mimeType: 'image/png', sizeBytes: window.__photoSizes[position] })),
+    });
+    window.__replyPhoto = (status, positions = []) => {
+      const pending = window.__checkoutPending.shift();
+      pending.resolve(status === 204 ? new Response(null, { status }) :
+        new Response(JSON.stringify(window.__photoState(positions)), {
+          headers: { 'Content-Type': 'application/json' }, status,
+        }));
+    };
+    window.__photoSizes = {};
   })()`);
   await openModal();
   const opening = await evaluate(`(() => ({
@@ -222,6 +243,9 @@ try {
     const context = canvas.getContext('2d');
     context.fillStyle = '#b9607c'; context.fillRect(0, 0, 24, 18);
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    window.__photoSizes[1] = blob.size;
+    window.__photoSizes[2] = blob.size;
+    window.__photoSizes[3] = blob.size;
     const transfer = new DataTransfer();
     transfer.items.add(new File([blob], 'private-one.png', { type: 'image/png' }));
     transfer.items.add(new File([blob], 'private-two.png', { type: 'image/png' }));
@@ -250,6 +274,7 @@ try {
     const context = canvas.getContext('2d');
     context.fillStyle = '#e7ba58'; context.fillRect(0, 0, 24, 18);
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    window.__photoSizes[2] = blob.size;
     const transfer = new DataTransfer();
     transfer.items.add(new File([blob], 'replacement.png', { type: 'image/png' }));
     const input = document.querySelector('input[type=file]');
@@ -260,6 +285,35 @@ try {
   assert.deepEqual(await evaluate(`window.__urlCounts`), { created: 4, revoked: 2 });
   assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list li').length`), 2);
   await evaluate(`document.querySelector('.modal-actions .continue-button').click()`);
+  await delay(30);
+  assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Add your photos");
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 4);
+  assert.deepEqual(await evaluate(`(() => {
+    const request = window.__checkoutRequests[3];
+    return { url: request.url, method: request.method, cache: request.cache,
+      credentials: request.credentials, headers: request.headers,
+      fields: [...request.body.entries()].map(([key, value]) => [key, key === '_payload' ? JSON.parse(value) : value.type]) };
+  })()`), {
+    url: "/api/storefront/checkout-intents/current/uploads", method: "POST", cache: "no-store",
+    credentials: "same-origin", headers: {}, fields: [["file", "image/png"], ["_payload", { position: 2 }]],
+  });
+  await evaluate(`window.__replyPhoto(201, [2])`);
+  await delay(50);
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 5);
+  assert.deepEqual(await evaluate(`JSON.parse(window.__checkoutRequests[4].body.get('_payload'))`), { position: 3 });
+  await evaluate(`window.__replyPhoto(503)`);
+  await delay(40);
+  assert.equal(await evaluate(`window.__checkoutRequests[5].method`), "GET");
+  await evaluate(`window.__replyPhoto(200, [2])`);
+  await delay(60);
+  assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Add your photos");
+  assert.match(await evaluate(`document.querySelector('.field-error').textContent`), /couldn't be uploaded/i);
+  await evaluate(`document.querySelector('.modal-actions .continue-button').click()`);
+  await delay(30);
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 7);
+  assert.deepEqual(await evaluate(`JSON.parse(window.__checkoutRequests[6].body.get('_payload'))`), { position: 3 });
+  await evaluate(`window.__replyPhoto(201, [2, 3])`);
+  await delay(60);
   const review = await evaluate(`(() => ({
     heading: document.querySelector('#checkout-modal-title').textContent,
     photoCount: document.querySelector('.review-photos span').textContent,
@@ -281,8 +335,28 @@ try {
   })()`);
   await delay(50);
   assert.equal(await evaluate(`window.__clientCalls`), 0);
-  assert.equal(await evaluate(`window.__checkoutRequests.length`), 3);
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 7);
   assert.match(await evaluate(`document.querySelector('.modal-notice').textContent`), /not connected yet/);
+  await evaluate(`document.querySelector('.back-button').click()`);
+  await evaluate(`[...document.querySelectorAll('.photo-preview-list li')].find((node) => node.textContent.includes('Photo 2')).querySelector('button:last-child').click()`);
+  await delay(30);
+  assert.equal(await evaluate(`window.__checkoutRequests[7].url`), "/api/storefront/checkout-intents/current/uploads/102");
+  assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list li').length`), 2);
+  await evaluate(`window.__replyPhoto(400)`);
+  await delay(40);
+  assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list li').length`), 2);
+  assert.match(await evaluate(`document.querySelector('.field-error').textContent`), /couldn't remove/i);
+  await evaluate(`[...document.querySelectorAll('.photo-preview-list li')].find((node) => node.textContent.includes('Photo 2')).querySelector('button:last-child').click()`);
+  await delay(30);
+  assert.equal(await evaluate(`window.__checkoutRequests[8].url`), "/api/storefront/checkout-intents/current/uploads/102");
+  await evaluate(`window.__replyPhoto(204)`);
+  await delay(50);
+  assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list li').length`), 1);
+  assert.match(await evaluate(`document.querySelector('.photo-preview-list li').textContent`), /Photo 3/);
+  await evaluate(`document.querySelector('.modal-actions .continue-button').click()`);
+  await delay(40);
+  assert.equal(await evaluate(`document.querySelector('.review-photos span').textContent`), "1 photo");
+  assert.equal(await evaluate(`window.__checkoutRequests.length`), 9);
   await screenshot("checkout-modal-desktop");
   await evaluate(`document.querySelector('.modal-close').click()`);
   assert.deepEqual(await evaluate(`(() => ({
@@ -290,7 +364,7 @@ try {
     focused: document.activeElement?.textContent.includes('Draw Me One'),
     overflow: document.body.style.overflow,
     revoked: window.__urlCounts.revoked
-  }))()`), { dialog: false, focused: true, overflow: "", revoked: 2 });
+  }))()`), { dialog: false, focused: true, overflow: "", revoked: 3 });
   await evaluate(`document.querySelector('[data-final-cta] button').click()`);
   await delay(50);
   assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Ready for the press?");
@@ -300,6 +374,22 @@ try {
   assert.equal(await evaluate(`document.activeElement.getAttribute('aria-label')`), "Close checkout preview");
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   assert.equal(await evaluate(`document.activeElement.textContent.includes('Draw Me One')`), true);
+  await evaluate(`document.querySelector('[data-final-cta] button').click()`);
+  await delay(40);
+  await evaluate(`document.querySelector('.back-button').click()`);
+  await evaluate(`document.querySelector('.photo-preview-list button:last-child').click()`);
+  await delay(30);
+  await evaluate(`window.__replyPhoto(401)`);
+  await delay(50);
+  assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Choose your amount");
+  assert.match(await evaluate(`document.querySelector('.field-error').textContent`), /expired or is unavailable/i);
+  await evaluate(`document.querySelector('.continue-button').click()`);
+  await delay(30);
+  await evaluate(`window.__replyCheckout(201, 1250, 700)`);
+  await delay(50);
+  assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Add your photos");
+  assert.match(await evaluate(`document.querySelector('.photo-preview-list li').textContent`), /Photo 3/);
+  await evaluate(`document.querySelector('.modal-close').click()`);
   console.log("PASS local previews, authoritative review math, no-submit final action, focus trap, Escape, restoration, scroll lock, and session state");
 
   for (const [width, height, theme] of [[390, 844, "night"], [844, 390, "day"]]) {

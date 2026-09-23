@@ -78,6 +78,7 @@
 .photo-preview-list li:nth-child(2) { transform: rotate(1.5deg); }
 .photo-preview-list img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
 .uploaded-photo-placeholder { display: grid; place-content: center; width: 100%; aspect-ratio: 4 / 3; border: 2px dashed #a56a7c; color: #304739; background: #f4e6c7; text-align: center; font: 700 10px/1.5 Arial, sans-serif; }
+.preview-retry { place-self: center; border: 0; padding: 2px; color: #763d52; background: transparent; font: 700 9px/1 Arial, sans-serif; text-decoration: underline; cursor: pointer; }
 .photo-progress { min-height: 14px; margin: 7px 0 0; text-align: center; font: 700 10px/1.35 Arial, sans-serif; }
 .photo-preview-list span { display: block; margin: 4px 0; color: #304739; text-align: center; font: 9px/1 Arial, sans-serif; }
 .photo-preview-list li > div:last-child { display: flex; justify-content: center; gap: 6px; }

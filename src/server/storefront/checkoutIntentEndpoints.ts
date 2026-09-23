@@ -18,6 +18,10 @@ import {
   uploadCheckoutIntentFile,
 } from "./orderUploadService";
 import {
+  readCheckoutIntentUploadPreview,
+  type OrderUploadPreviewDependencies,
+} from "./orderUploadPreviewService";
+import {
   parseAmountRequest,
   parseEmptyObjectRequest,
   parseStorefrontUpload,
@@ -156,6 +160,44 @@ const deleteUploadHandler = async (request: PayloadRequest) => {
   }
 };
 
+export const previewUploadHandler = async (
+  request: PayloadRequest,
+  dependencies: OrderUploadPreviewDependencies = {},
+) => {
+  try {
+    const credential = readRequiredCredential(request);
+    const uploadIdValue = request.routeParams?.uploadId;
+    const uploadId =
+      typeof uploadIdValue === "string" && /^\d+$/.test(uploadIdValue)
+        ? Number(uploadIdValue)
+        : Number.NaN;
+    if (!Number.isSafeInteger(uploadId) || uploadId <= 0) {
+      throw new StorefrontApiError(404, "UPLOAD_NOT_FOUND");
+    }
+
+    const preview = await readCheckoutIntentUploadPreview({
+      credential,
+      dependencies,
+      request,
+      uploadId,
+    });
+    const headers = new Headers({
+      "Cache-Control": "private, no-store, max-age=0",
+      "Content-Disposition": "inline",
+      "Content-Type": preview.contentType,
+      "Cross-Origin-Resource-Policy": "same-origin",
+      Pragma: "no-cache",
+      "X-Content-Type-Options": "nosniff",
+    });
+    if (preview.contentLength !== undefined) {
+      headers.set("Content-Length", String(preview.contentLength));
+    }
+    return new Response(preview.stream, { headers, status: 200 });
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
 const checkoutSessionHandler = async (request: PayloadRequest) => {
   try {
     requireSameOrigin(request);
@@ -200,6 +242,11 @@ export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
     handler: deleteUploadHandler,
     method: "delete",
     path: "/storefront/checkout-intents/current/uploads/:uploadId",
+  },
+  {
+    handler: previewUploadHandler,
+    method: "get",
+    path: "/storefront/checkout-intents/current/uploads/:uploadId/preview",
   },
   {
     handler: checkoutSessionHandler,

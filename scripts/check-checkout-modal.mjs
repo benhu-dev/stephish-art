@@ -390,7 +390,97 @@ try {
   assert.equal(await evaluate(`document.querySelector('#checkout-modal-title').textContent`), "Add your photos");
   assert.match(await evaluate(`document.querySelector('.photo-preview-list li').textContent`), /Photo 3/);
   await evaluate(`document.querySelector('.modal-close').click()`);
+  assert.equal(await evaluate(`window.__checkoutRequests.some((request) => request.url.endsWith('/preview'))`), false);
   console.log("PASS local previews, authoritative review math, no-submit final action, focus trap, Escape, restoration, scroll lock, and session state");
+
+  await navigate("day");
+  await evaluate(`(() => {
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
+    window.__previewRequests = [];
+    window.__previewPending = {};
+    window.__previewAttempts = {};
+    window.__previewAborted = false;
+    window.__previewURLCounts = { created: 0, revoked: 0 };
+    const create = URL.createObjectURL.bind(URL);
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (value) => { window.__previewURLCounts.created += 1; return create(value); };
+    URL.revokeObjectURL = (value) => { window.__previewURLCounts.revoked += 1; return revoke(value); };
+    const imageResponse = () => new Response(png, { headers: { 'content-length': String(png.byteLength), 'content-type': 'image/png' } });
+    const state = {
+      amountCents: 1000,
+      expiresAt: '2026-09-24T12:00:00.000Z',
+      limits: {
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        maxFileBytes: 15 * 1024 * 1024,
+        maxFiles: 3,
+        maxTotalBytes: 30 * 1024 * 1024,
+        minimumAmountCents: 500,
+      },
+      status: 'draft',
+      uploads: [1, 2, 3].map((position) => ({ id: 200 + position, position, mimeType: 'image/png', sizeBytes: png.byteLength })),
+    };
+    window.fetch = (url, options = {}) => {
+      const request = { cache: options.cache, credentials: options.credentials, method: options.method, url: String(url) };
+      window.__previewRequests.push(request);
+      if (request.url === '/api/storefront/checkout-intents') {
+        return Promise.resolve(new Response(JSON.stringify(state), { headers: { 'content-type': 'application/json' }, status: 200 }));
+      }
+      if (request.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }));
+      if (!request.url.endsWith('/preview')) return Promise.resolve(new Response(null, { status: 500 }));
+      const uploadId = Number(request.url.split('/').at(-2));
+      window.__previewAttempts[uploadId] = (window.__previewAttempts[uploadId] ?? 0) + 1;
+      if (uploadId === 202 && window.__previewAttempts[uploadId] === 1) {
+        return Promise.resolve(new Response(JSON.stringify({ error: { code: 'PREVIEW_UNAVAILABLE' } }), { status: 500 }));
+      }
+      if (uploadId === 203) {
+        return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => {
+          window.__previewAborted = true;
+          reject(new DOMException('Aborted', 'AbortError'));
+        }, { once: true }));
+      }
+      return new Promise((resolve) => { window.__previewPending[uploadId] = () => resolve(imageResponse()); });
+    };
+  })()`);
+  await openModal();
+  await evaluate(`[...document.querySelectorAll('.amount-preset')].find((node) => node.textContent.trim() === '$10').click()`);
+  await evaluate(`document.querySelector('.continue-button').click()`);
+  await delay(100);
+  assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list .uploaded-photo-placeholder').length`), 3);
+  assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list img').length`), 0);
+  assert.equal(await evaluate(`document.querySelectorAll('.preview-retry').length`), 1);
+  assert.deepEqual(await evaluate(`Object.fromEntries(Object.entries(window.__previewAttempts).map(([key, value]) => [key, value]))`), { 201: 1, 202: 1, 203: 1 });
+  await evaluate(`[...document.querySelectorAll('.photo-preview-list li')].find((node) => node.textContent.includes('Photo 3')).querySelector('button:last-child').click()`);
+  await delay(80);
+  assert.equal(await evaluate(`window.__previewAborted`), true);
+  assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list li').length`), 2);
+  await evaluate(`document.querySelector('.preview-retry').click()`);
+  await delay(30);
+  assert.equal(await evaluate(`window.__previewAttempts[202]`), 2);
+  await evaluate(`window.__previewPending[202]()`);
+  await evaluate(`window.__previewPending[201]()`);
+  await delay(100);
+  assert.equal(await evaluate(`document.querySelectorAll('.photo-preview-list img').length`), 2);
+  assert.equal(await evaluate(`[...document.querySelectorAll('.photo-preview-list img')].every((image) => image.src.startsWith('blob:') && image.complete && image.naturalWidth > 0)`), true);
+  assert.equal(await evaluate(`window.__previewRequests.filter((request) => request.url.endsWith('/201/preview')).length`), 1);
+  await evaluate(`document.querySelector('.continue-button').click()`);
+  await delay(50);
+  assert.equal(await evaluate(`document.querySelectorAll('.review-photos img').length`), 2);
+  const beforeFinalAction = await evaluate(`window.__previewRequests.length`);
+  await evaluate(`document.querySelector('.secure-checkout-button').click()`);
+  await delay(30);
+  assert.equal(await evaluate(`window.__previewRequests.length`), beforeFinalAction);
+  assert.equal(await evaluate(`(() => {
+    const visible = (document.querySelector('[role=dialog]').textContent + location.href).toLowerCase();
+    return ['supabase', 'signed', 'bucket', 'storage', 'accesstoken', 'tokenhash', 'intentid']
+      .some((term) => visible.includes(term));
+  })()`), false);
+  await evaluate(`document.querySelector('.back-button').click()`);
+  await evaluate(`[...document.querySelectorAll('.photo-preview-list li')].find((node) => node.textContent.includes('Photo 1')).querySelector('button:last-child').click()`);
+  await delay(80);
+  assert.deepEqual(await evaluate(`window.__previewURLCounts`), { created: 2, revoked: 1 });
+  await evaluate(`document.querySelector('.modal-close').click()`);
+  assert.deepEqual(await evaluate(`window.__previewURLCounts`), { created: 2, revoked: 1 });
+  console.log("PASS refreshed private previews, placeholder fallback, retry, deduplication, abort, cleanup, and inert final action");
 
   for (const [width, height, theme] of [[390, 844, "night"], [844, 390, "day"]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });

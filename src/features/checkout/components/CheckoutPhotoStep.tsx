@@ -7,12 +7,22 @@ import {
 import type { SafeUpload } from "../checkoutIntentClient";
 
 export type LocalPhotoPreview = { file: File; id: number; previewUrl: string };
+export type ServerPhotoPreview =
+  | { status: "failed" | "loading" }
+  | { previewUrl: string; status: "ready" };
 export type PhotoEntry = {
   position: 1 | 2 | 3;
   local?: LocalPhotoPreview;
   server?: SafeUpload;
+  serverPreview?: ServerPhotoPreview;
   status: "local" | "uploading" | "confirmed" | "deleting" | "failed" | "uncertain";
 };
+
+export const photoPreviewUrl = (photo: PhotoEntry) =>
+  photo.local?.previewUrl ??
+  (photo.serverPreview?.status === "ready"
+    ? photo.serverPreview.previewUrl
+    : undefined);
 
 type Props = {
   error: string | null;
@@ -24,12 +34,13 @@ type Props = {
   onDrop: (files: File[]) => void;
   onOpenPicker: (replaceIndex: number | null) => void;
   onRemove: (position: number) => void;
+  onRetryPreview: (position: number) => void;
   photos: PhotoEntry[];
   setNote: (value: string) => void;
 };
 
 export function CheckoutPhotoStep(props: Props) {
-  const { error, inputRef, limits, note, onChoose, onDrop, onOpenPicker, onRemove, pending, photos, setNote } = props;
+  const { error, inputRef, limits, note, onChoose, onDrop, onOpenPicker, onRemove, onRetryPreview, pending, photos, setNote } = props;
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     onDrop(Array.from(event.dataTransfer.files));
@@ -58,13 +69,20 @@ export function CheckoutPhotoStep(props: Props) {
       />
       {photos.length > 0 && <ol className="photo-preview-list" aria-label="Selected photo previews">
         {photos.map((photo) => <li key={photo.position}>
-          {photo.local ? (
+          {photoPreviewUrl(photo) ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img alt={`Photo ${photo.position} preview`} src={photo.local.previewUrl} />
+            <img alt={`Photo ${photo.position} preview`} src={photoPreviewUrl(photo)} />
           ) : <div className="uploaded-photo-placeholder" aria-label={`Photo ${photo.position} uploaded`}>
             Uploaded {photo.server?.mimeType?.split("/")[1]?.toUpperCase() ?? "photo"}<br />
             {photo.server?.sizeBytes == null ? "Private photo" : formatBytesAsMebibytes(photo.server.sizeBytes)}
           </div>}
+          {!photo.local && photo.serverPreview?.status === "failed" &&
+            <button
+              aria-label={`Retry Photo ${photo.position} preview`}
+              className="preview-retry"
+              onClick={() => onRetryPreview(photo.position)}
+              type="button"
+            >Retry preview</button>}
           <span>Photo {photo.position} · {photo.status === "confirmed" ? "Uploaded privately" : photo.status === "uploading" ? "Uploading…" : photo.status === "deleting" ? "Removing…" : photo.status === "uncertain" ? "Checking upload…" : photo.status === "failed" ? "Retry needed" : "Ready to upload"}</span>
           <div><button disabled={pending} onClick={() => onOpenPicker(photo.position)} type="button">Replace</button>
             <button disabled={pending} onClick={() => onRemove(photo.position)} type="button">Remove</button></div>

@@ -1,22 +1,33 @@
 import { SHIPPING_AMOUNT_CENTS, formatUsd } from "../clientCheckoutDraft";
 import { formatBytesAsMebibytes } from "../clientCheckoutDraft";
-import type { PhotoEntry } from "./CheckoutPhotoStep";
+import { photoPreviewUrl, type PhotoEntry } from "./CheckoutPhotoStep";
 
-type Props = { amountCents: number; onFinish: () => void; photos: PhotoEntry[] };
+type Props = {
+  amountCents: number;
+  onFinish: () => void;
+  onRetryPreview: (position: number) => void;
+  photos: PhotoEntry[];
+};
 
-export function CheckoutReviewStep({ amountCents, onFinish, photos }: Props) {
+export function CheckoutReviewStep({ amountCents, onFinish, onRetryPreview, photos }: Props) {
   return (
     <section className="checkout-step review-step" aria-labelledby="checkout-modal-title">
       <p className="step-kicker">Step 3 of 3 · One last look</p>
       <h2 id="checkout-modal-title">Ready for the press?</h2>
       <p className="step-intro">Here is the postcard plan you made in this preview.</p>
       <div className="review-photos">
-        {photos.map((photo) => photo.local ? (
+        {photos.map((photo) => photoPreviewUrl(photo) ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img alt={`Photo ${photo.position} preview`} key={photo.position} src={photo.local.previewUrl} />
+          <img alt={`Photo ${photo.position} preview`} key={photo.position} src={photoPreviewUrl(photo)} />
         ) : <div className="uploaded-photo-placeholder" key={photo.position}>
           Photo {photo.position}<br />{photo.server?.mimeType?.split("/")[1]?.toUpperCase() ?? "Photo"}<br />
           {photo.server?.sizeBytes == null ? "Private" : formatBytesAsMebibytes(photo.server.sizeBytes)}
+          {!photo.local && photo.serverPreview?.status === "failed" && <button
+            aria-label={`Retry Photo ${photo.position} preview`}
+            className="preview-retry"
+            onClick={() => onRetryPreview(photo.position)}
+            type="button"
+          >Retry preview</button>}
         </div>)}
         <span>{photos.length} {photos.length === 1 ? "photo" : "photos"}</span>
       </div>

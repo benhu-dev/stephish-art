@@ -10,6 +10,7 @@ import {
 } from "../clientCheckoutDraft";
 import { submitCheckoutAmount } from "../checkoutIntentClient";
 import { deletePhoto, readCurrentPhotos, uploadPhoto } from "../checkoutPhotoClient";
+import { createCheckoutPhotoPreviewManager } from "../checkoutPhotoPreviewClient";
 import type { SafeUpload } from "../checkoutIntentClient";
 import { CheckoutAmountStep } from "./CheckoutAmountStep";
 import { CheckoutPhotoStep, type PhotoEntry } from "./CheckoutPhotoStep";
@@ -33,6 +34,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   const replacePositionRef = useRef<number | null>(null);
   const nextPhotoId = useRef(0);
   const photosRef = useRef<PhotoEntry[]>([]);
+  const previewManagerRef = useRef<ReturnType<typeof createCheckoutPhotoPreviewManager> | null>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const photoActionRef = useRef(false);
   const [step, setStep] = useState(1);
@@ -47,9 +49,17 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   const [note, setNote] = useState("");
   const [notice, setNotice] = useState("");
 
+  const getPreviewManager = useCallback(() => {
+    previewManagerRef.current ??= createCheckoutPhotoPreviewManager();
+    return previewManagerRef.current;
+  }, []);
+
   useEffect(() => () => {
     requestControllerRef.current?.abort();
     photosRef.current.forEach(({ local }) => { if (local) URL.revokeObjectURL(local.previewUrl); });
+    const previewManager = previewManagerRef.current;
+    previewManagerRef.current = null;
+    previewManager?.dispose();
   }, []);
 
   const closeModal = useCallback(() => {
@@ -96,23 +106,82 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
     };
   }, [closeModal, open, triggerRef]);
 
-  const commitPhotos = (next: PhotoEntry[]) => {
-    const sorted = [...next].sort((a, b) => a.position - b.position);
+  const commitPhotos = useCallback((next: PhotoEntry[]) => {
+    const missing = next.filter((photo) =>
+      photo.server && !photo.local && !photo.serverPreview,
+    );
+    const requestedIds = new Set(missing.map((photo) => photo.server!.id));
+    const sorted = next.map((photo) =>
+      photo.server && requestedIds.has(photo.server.id)
+        ? { ...photo, serverPreview: { status: "loading" as const } }
+        : photo,
+    ).sort((a, b) => a.position - b.position);
     photosRef.current = sorted;
     setPhotos(sorted);
-  };
+
+    if (requestedIds.size === 0) return;
+    const previewManager = getPreviewManager();
+    for (const uploadId of requestedIds) {
+      void previewManager.load(uploadId).then((result) => {
+        if (result.kind === "aborted") return;
+        const current = photosRef.current.find(
+          (photo) => photo.server?.id === uploadId,
+        );
+        if (!current || current.local) {
+          if (result.kind === "ready") {
+            previewManager.release(uploadId);
+          }
+          return;
+        }
+        const updated = photosRef.current.map((photo) =>
+          photo.server?.id === uploadId
+            ? {
+                ...photo,
+                serverPreview: result.kind === "ready"
+                  ? { previewUrl: result.previewUrl, status: "ready" as const }
+                  : { status: "failed" as const },
+              }
+            : photo,
+        ).sort((first, second) => first.position - second.position);
+        photosRef.current = updated;
+        setPhotos(updated);
+      });
+    }
+  }, [getPreviewManager]);
+
   const mergeUploads = (uploads: SafeUpload[], created = false) => {
     const existing = photosRef.current;
+    const retainedServerIds = new Set(uploads.map((upload) => upload.id));
+    for (const old of existing) {
+      if (old.server && !retainedServerIds.has(old.server.id)) {
+        previewManagerRef.current?.release(old.server.id);
+      }
+    }
     const next: PhotoEntry[] = [];
     for (const position of [1, 2, 3] as const) {
       const old = existing.find((photo) => photo.position === position);
       const server = uploads.find((upload) => upload.position === position);
       if (server) {
-        const ownsPreview = !old?.local || old.server?.id === server.id || (
+        const sameServer = old?.server?.id === server.id;
+        const keepLocal = Boolean(old?.local && (sameServer || (
           (old.status === "uploading" || old.status === "uncertain") &&
           matchesLocalFile(server, old.local.file)
-        );
-        next.push({ position, server, local: old?.local, status: ownsPreview ? "confirmed" : "failed" });
+        )));
+        if (old?.server && !sameServer) {
+          previewManagerRef.current?.release(old.server.id);
+        }
+        if (old?.local && !keepLocal) {
+          URL.revokeObjectURL(old.local.previewUrl);
+        }
+        next.push({
+          position,
+          server,
+          ...(keepLocal ? { local: old!.local } : {}),
+          ...(sameServer && old?.serverPreview
+            ? { serverPreview: old.serverPreview }
+            : {}),
+          status: "confirmed",
+        });
       }
       else if (old?.local) next.push({ position, local: old.local, status: created || old.status !== "failed" ? "local" : "failed" });
     }
@@ -168,6 +237,16 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
     replacePositionRef.current = replacePosition;
     inputRef.current?.click();
   };
+  const retryPhotoPreview = (position: number) => {
+    const entry = photosRef.current.find((photo) => photo.position === position);
+    if (!entry?.server || entry.local) return;
+    previewManagerRef.current?.release(entry.server.id);
+    commitPhotos(photosRef.current.map((photo) =>
+      photo.position === position
+        ? { ...photo, serverPreview: undefined }
+        : photo,
+    ));
+  };
   const removePhoto = async (position: number): Promise<boolean> => {
     if (photoActionRef.current) return false;
     const entry = photosRef.current.find((photo) => photo.position === position);
@@ -192,6 +271,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
       }
       if (result.kind === "unavailable") { unavailableIntent(); return false; }
       if (result.kind === "deleted") {
+        previewManagerRef.current?.release(entry.server.id);
         if (entry.local) URL.revokeObjectURL(entry.local.previewUrl);
         commitPhotos(photosRef.current.filter((photo) => photo.position !== position));
         setPhotoError(null);
@@ -322,6 +402,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
           onDrop={(files) => { void acceptFiles(files, null); }}
           onOpenPicker={openPicker}
           onRemove={(position) => { void removePhoto(position); }}
+          onRetryPreview={retryPhotoPreview}
           pending={photoPending}
           photos={photos}
           setNote={setNote}
@@ -329,6 +410,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         {step === 3 && amountCents !== null && <CheckoutReviewStep
           amountCents={amountCents}
           onFinish={() => setNotice("Your choices are saved in this preview. Secure checkout is not connected yet.")}
+          onRetryPreview={retryPhotoPreview}
           photos={photos}
         />}
         <div className="modal-actions">

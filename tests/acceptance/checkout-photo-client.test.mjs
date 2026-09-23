@@ -85,7 +85,7 @@ test("ambiguous replies require reconciliation and malformed success data stays 
   }
 });
 
-test("a server-only upload renders a private placeholder with no internal metadata", () => {
+test("server previews keep artistic loading and failure fallbacks without internal metadata", () => {
   const entry = { position: 3, server: uploads([3])[0], status: "confirmed" };
   const markup = renderToStaticMarkup(createElement(CheckoutPhotoStep, {
     error: null,
@@ -96,6 +96,7 @@ test("a server-only upload renders a private placeholder with no internal metada
     onDrop() {},
     onOpenPicker() {},
     onRemove() {},
+    onRetryPreview() {},
     pending: false,
     photos: [entry],
     setNote() {},
@@ -103,6 +104,7 @@ test("a server-only upload renders a private placeholder with no internal metada
   const review = renderToStaticMarkup(createElement(CheckoutReviewStep, {
     amountCents: 900,
     onFinish() {},
+    onRetryPreview() {},
     photos: [entry],
   }));
   for (const html of [markup, review]) {
@@ -110,4 +112,31 @@ test("a server-only upload renders a private placeholder with no internal metada
     assert.match(html, /PNG/);
     assert.doesNotMatch(html, /103|bucket|storage|token|signed|intentId|https?:\/\//i);
   }
+
+  const failed = { ...entry, serverPreview: { status: "failed" } };
+  const failedMarkup = renderToStaticMarkup(createElement(CheckoutPhotoStep, {
+    error: null,
+    inputRef: { current: null },
+    limits: state().limits,
+    note: "",
+    onChoose() {},
+    onDrop() {},
+    onOpenPicker() {},
+    onRemove() {},
+    onRetryPreview() {},
+    pending: false,
+    photos: [failed],
+    setNote() {},
+  }));
+  assert.match(failedMarkup, /Retry preview/);
+  assert.match(failedMarkup, /Photo 3 uploaded/);
+
+  const ready = { ...entry, serverPreview: { previewUrl: "blob:safe-preview", status: "ready" } };
+  const readyReview = renderToStaticMarkup(createElement(CheckoutReviewStep, {
+    amountCents: 900,
+    onFinish() {},
+    onRetryPreview() {},
+    photos: [ready],
+  }));
+  assert.match(readyReview, /blob:safe-preview/);
 });

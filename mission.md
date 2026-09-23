@@ -1,123 +1,170 @@
-# Phase 2 — Unit 2.12.1: Fix Orphaned Upload Deletion
+# Phase 2 — Unit 2.12.3: Restore Private Photo Previews After Refresh
 
 ## Goal
 
-Fix the confirmed defect where deleting an uploaded photo removes its `order_uploads` row and returns `204`, but leaves the corresponding object in the private `order-uploads` bucket.
+Fix the frontend so server-confirmed private photos automatically load and display after a full page refresh and Checkout Intent resume.
 
-Do not implement new functionality.
+This is a focused correction to the current uncommitted Unit 2.12.2 work.
 
-## Confirmed State
+## Confirmed Failure
 
-The current user-owned state is:
+Manual reproduction already established:
 
-* One Checkout Intent
-* One `order_uploads` row for Photo 2
-* Two private Storage objects
-* Photo 2 object: `ccc31af8-62e7-4aa0-9e20-1486486db15c.jpg`
-* Suspected orphaned Photo 1 object: `5b8cc125-f590-4847-ae5a-43c7b247c5ca.png`
+1. A valid photo was uploaded successfully.
 
-The app and database correctly retain only Photo 2. Do not delete or modify Photo 2, its row, or its owning Intent.
+2. The page was fully refreshed.
 
-## Investigation
+3. The checkout modal was reopened.
 
-Reproduce and identify the exact root cause before changing code.
+4. Saving the amount resumed the existing Checkout Intent.
 
-Inspect:
+5. The response correctly included the confirmed upload metadata:
 
-* The object key stored on the upload record
-* The key passed to the S3/Supabase deletion operation
-* Whether a URL, filename, encoded path, or incorrect prefix is being used
-* Whether the storage delete operation reports success when the wrong or nonexistent key is supplied
-* Whether the endpoint commits the database deletion without confirming object removal
+   * `status: draft`
+   * upload `id: 263`
+   * `position: 1`
+   * `mimeType: image/jpeg`
+   * `sizeBytes: 2140967`
 
-Add a red-first regression that fails against the current implementation and exercises real private Storage behavior rather than only a mocked successful delete.
+6. The photo step displayed the “Uploaded JPEG” placeholder.
+
+7. DevTools Network showed no request containing `preview`.
+
+The browser never called:
+
+`GET /api/storefront/checkout-intents/current/uploads/263/preview`
+
+Therefore the known primary defect is in the frontend preview trigger or asynchronous state hydration. Intent-cookie authentication, Intent resume, and upload metadata restoration are already working.
+
+The observed upload ID is diagnostic evidence only. Do not assume it still exists or modify it.
+
+## Baseline
+
+* Preserve all current uncommitted Unit 2.12.2 changes.
+* `mission.md` is intentionally modified.
+* Preserve all existing user records and Storage objects.
+* Do not require a clean working tree.
+* Record starting HEAD and Git status.
+* Do not commit or push.
 
 ## Required Fix
 
-A successful DELETE must guarantee:
+When confirmed uploads arrive asynchronously after the photo UI has mounted:
 
-1. The owning upload record is locked and validated.
-2. The exact persisted Storage object key is used.
-3. The intended private object is removed.
-4. Object absence is verified.
-5. The database row is deleted only as part of the existing safe transactional flow.
-6. `204` is returned only when both the row and object are gone.
+* Automatically request each confirmed upload through its existing protected preview endpoint.
+* Use the upload ID returned by the authenticated Intent response.
+* Issue exactly one active preview request per current confirmed upload.
+* Use same-origin credentials and `cache: no-store`.
+* Show the artistic placeholder while loading.
+* Replace it with the actual image after a successful response.
+* Confirm the rendered image has non-zero natural dimensions.
+* On failure, retain the placeholder and display the existing retry action.
+* Retry must issue a new request and render the image on success.
+* Do not require another refresh, navigation, Replace action, or re-upload.
+* Do not fetch server previews for new local files that already have object URLs.
+* Abort obsolete requests when uploads are removed, replaced, or the modal unmounts.
+* Revoke all replaced or discarded blob URLs.
+* Preserve Photo and Review previews, Replace, Remove, fixed positions, and current styling.
+* Keep the final Checkout action non-operative.
 
-If object deletion fails or the object remains:
+Inspect effect dependencies, upload identity tracking, request-deduplication state, stale closures, and any logic that marks a restored upload as already requested.
 
-* Do not permanently delete the database row.
-* Preserve or restore the consistent pre-request state.
-* Return a safe error.
-* Allow retry.
+Do not change the protected endpoint contract unless, after the frontend begins calling it, direct evidence reveals a separate endpoint defect. If a secondary defect appears, make only the smallest necessary correction and report it.
 
-If database deletion fails after object removal, preserve the existing restoration guarantee.
+## Red-First Regression
 
-Do not weaken ownership, cookie, origin, transaction, or private Storage controls.
+Add a focused regression reproducing the real ordering:
 
-## Existing Orphan Cleanup
+1. Photo UI mounts with no confirmed uploads.
+2. Intent resume completes asynchronously.
+3. Confirmed upload metadata is added to client state.
+4. Exactly one protected preview request starts automatically.
+5. A successful image response creates a blob URL.
+6. The actual image renders.
 
-After the root cause is proven and fixed, removal of this exact object is authorized only if all checks confirm it is unreferenced:
+Also cover:
 
-`5b8cc125-f590-4847-ae5a-43c7b247c5ca.png`
+* No duplicate request after unrelated rerenders.
+* Local previews cause no server preview request.
+* Failed request exposes Retry.
+* Retry makes one new request and succeeds.
+* Remove, Replace, and unmount abort obsolete requests and clean blob URLs.
+* Review uses the restored preview correctly.
 
-Before removing it, verify:
+Do not satisfy this test by mounting the component with uploads already populated.
 
-* No `order_uploads` row references its exact key or filename.
-* No Order or other record references it.
-* It is the confirmed Photo 1 object from this manual test.
+## Real Browser Verification
 
-Do not delete any other pre-existing object.
+Use an isolated browser context and uniquely identifiable synthetic image:
 
-Expected retained user-owned state after cleanup:
+1. Run the production build and production server.
+2. Open the storefront.
+3. Save a valid amount through the real endpoint.
+4. Upload one image through the real photo UI.
+5. Confirm its database row and private Storage object exist.
+6. Perform a full page reload.
+7. Reopen the modal and resume the same Intent.
+8. Advance to Photos.
+9. Confirm the browser automatically requests the protected preview.
+10. Confirm:
 
-* One Checkout Intent
-* One upload row for Photo 2
-* One Storage object: `ccc31af8-62e7-4aa0-9e20-1486486db15c.jpg`
+    * the request returns `200`,
+    * the MIME type matches,
+    * required private/no-store/nosniff headers remain,
+    * the image renders with non-zero natural dimensions,
+    * the placeholder is replaced,
+    * no console errors occur,
+    * and no cookie, token, hash, Storage key, bucket name, filename, signed URL, or credential is exposed.
 
-## Verification
+A mocked browser check is not sufficient for completion.
 
-Run focused checks only:
+## Scope Limits
 
-* Upload two uniquely named synthetic images.
-* Delete position 1 through the real endpoint.
-* Confirm its row and exact Storage object are both gone.
-* Confirm position 2 row and object remain unchanged.
-* Confirm repeated Storage listing or HEAD checks cannot find the deleted object.
-* Confirm failed or incorrect-key deletion cannot commit the row deletion.
-* Confirm retry succeeds.
-* Clean all synthetic fixtures.
-* Confirm the retained user-owned Photo 2 row and object are unchanged.
-* Run the existing Unit 2.12 deletion/client regression.
-* Run TypeScript, ESLint, and production build.
+Do not implement or change:
 
-Do not run Stripe, webhook, Customer, Order, scene, or unrelated suites.
+* Expired Intent cleanup or scheduled jobs
+* Stripe or Checkout Session behavior
+* Final Checkout button behavior
+* Customer or Order creation
+* Database schemas or migrations
+* Dependencies, lockfiles, or environment variables
+* Cookie format or authentication rules
+* Storage privacy or access policies
+* Public or signed image URLs
+* Narrative animations or unrelated styling
 
-## Restrictions
+Never print or log environment values, cookies, raw tokens, image contents, signatures, or private Storage identifiers.
 
-Do not change:
+## Validation
 
-* Frontend UX except if required to handle the corrected error response
-* Upload creation behavior
-* Position behavior
-* Private preview behavior
-* Stripe
-* Schemas or migrations
-* Dependencies
-* Environment files
-* General cleanup jobs
+Run only:
 
-Do not commit or push.
+* Focused preview/photo client tests
+* Production-browser upload → refresh → resume regression
+* Focused private Storage lifecycle
+* TypeScript
+* ESLint
+* Production build
+* `git diff --check`
+
+Use only uniquely named synthetic records and files. Remove every fixture, Storage object, cookie, and browser profile created by this task. Preserve baseline data and report database and Storage counts before and after.
+
+Stop all task-created servers and browsers.
 
 ## Completion Report
 
 Report:
 
-* Confirmed root cause
-* Exact fix
-* Red-first regression evidence
-* Real database and Storage deletion evidence
-* Existing orphan cleanup evidence
-* Final retained user-owned rows and objects
-* Files changed
-* Validation results
+* `COMPLETE` or `BLOCKED`
+* Starting and ending HEAD
+* Proven code-level root cause
+* Exact files changed
+* Red-first regression result
+* Real preview request URL pattern, HTTP status, and rendered-image evidence
+* Test, TypeScript, lint, build, browser, and lifecycle results
+* Before/after database and Storage counts
+* Synthetic cleanup result
 * Final Git status
+* Confirmation that no Intent cleanup, Stripe, schema, migration, dependency, environment, public Storage, or unrelated UI change was introduced
+
+Do not report `COMPLETE` unless the real production-browser upload → full refresh → Intent resume flow automatically displays the private image.

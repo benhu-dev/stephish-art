@@ -49,6 +49,10 @@ test("root storefront endpoints have the exact route and method contract", () =>
         path: "/storefront/checkout-intents/current/uploads/:uploadId",
       },
       {
+        method: "get",
+        path: "/storefront/checkout-intents/current/uploads/:uploadId/preview",
+      },
+      {
         method: "post",
         path: "/storefront/checkout-intents/current/checkout-session",
       },

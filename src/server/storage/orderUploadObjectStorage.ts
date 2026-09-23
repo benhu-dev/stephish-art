@@ -29,6 +29,24 @@ export const readOrderUploadObject = async (filename: string) => {
   };
 };
 
+export const openOrderUploadObject = async (
+  filename: string,
+  abortSignal?: AbortSignal,
+) => {
+  const { bucket, client } = getStorage();
+  const result = await client.send(
+    new GetObjectCommand({ Bucket: bucket, Key: filename }),
+    abortSignal ? { abortSignal } : undefined,
+  );
+  if (!result.Body) throw new Error("ORDER_UPLOAD_OBJECT_MISSING");
+
+  return {
+    contentLength: result.ContentLength,
+    contentType: result.ContentType,
+    stream: result.Body.transformToWebStream(),
+  };
+};
+
 export const deleteOrderUploadObject = async (filename: string) => {
   const { bucket, client } = getStorage();
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: filename }));

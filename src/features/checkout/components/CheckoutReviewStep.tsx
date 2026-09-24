@@ -4,12 +4,13 @@ import { photoPreviewUrl, type PhotoEntry } from "./CheckoutPhotoStep";
 
 type Props = {
   amountCents: number;
+  artistNote: string;
   onFinish: () => void;
   onRetryPreview: (position: number) => void;
   photos: PhotoEntry[];
 };
 
-export function CheckoutReviewStep({ amountCents, onFinish, onRetryPreview, photos }: Props) {
+export function CheckoutReviewStep({ amountCents, artistNote, onFinish, onRetryPreview, photos }: Props) {
   return (
     <section className="checkout-step review-step" aria-labelledby="checkout-modal-title">
       <p className="step-kicker">Step 3 of 3 · One last look</p>
@@ -36,6 +37,10 @@ export function CheckoutReviewStep({ amountCents, onFinish, onRetryPreview, phot
         <div><dt>Shipping</dt><dd>{formatUsd(SHIPPING_AMOUNT_CENTS)}</dd></div>
         <div className="review-total"><dt>Total</dt><dd>{formatUsd(amountCents + SHIPPING_AMOUNT_CENTS)}</dd></div>
       </dl>
+      {artistNote && <div className="review-artist-note">
+        <strong>Private note for the artist</strong>
+        <p>{artistNote}</p>
+      </div>}
       <button className="secure-checkout-button" onClick={onFinish} type="button">
         Continue to Secure Checkout
       </button>

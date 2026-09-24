@@ -5,6 +5,7 @@ import {
   type CheckoutLimits,
 } from "../clientCheckoutDraft";
 import type { SafeUpload } from "../checkoutIntentClient";
+import { MAX_ARTIST_NOTE_CHARACTERS } from "../../../lib/artistNoteContract";
 
 export type LocalPhotoPreview = { file: File; id: number; previewUrl: string };
 export type ServerPhotoPreview =
@@ -91,7 +92,7 @@ export function CheckoutPhotoStep(props: Props) {
       <p aria-live="polite" className="photo-progress">{pending ? "Saving your private photos…" : photos.filter((photo) => photo.status === "confirmed").length > 0 ? `${photos.filter((photo) => photo.status === "confirmed").length} of ${photos.length} uploaded privately` : "\u00a0"}</p>
       <p className="field-error" role={error ? "alert" : undefined}>{error ?? "\u00a0"}</p>
       <label className="private-note">Private note for the artist <span>(optional)</span>
-        <textarea maxLength={600} onChange={(event) => setNote(event.target.value)} value={note} />
+        <textarea disabled={pending} maxLength={MAX_ARTIST_NOTE_CHARACTERS} onChange={(event) => setNote(event.target.value)} value={note} />
       </label>
     </section>
   );

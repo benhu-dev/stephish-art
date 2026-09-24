@@ -12,6 +12,7 @@ test("Checkout Intents has the exact private stored schema and virtual Join", ()
   assert.deepEqual(Object.keys(fieldsByName), [
     "status",
     "amountCents",
+    "artistNote",
     "accessTokenHash",
     "expiresAt",
     "deleteAfter",

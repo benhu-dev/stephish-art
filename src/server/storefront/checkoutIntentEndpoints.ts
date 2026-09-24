@@ -11,6 +11,7 @@ import {
   createOrResumeCheckoutIntent,
   readCurrentCheckoutIntent,
   readMinimumAmountCents,
+  saveCheckoutIntentArtistNote,
 } from "./checkoutIntentService";
 import { readCheckoutStatus } from "./checkoutStatusService";
 import {
@@ -29,6 +30,7 @@ import {
   requireNoQueryString,
   requireSameOrigin,
 } from "./storefrontRequestSecurity";
+import { parseArtistNoteRequest } from "./artistNote";
 import {
   StorefrontApiError,
   unauthorizedIntentError,
@@ -104,6 +106,23 @@ const currentHandler = async (request: PayloadRequest) => {
     const credential = readRequiredCredential(request);
     return jsonResponse(
       await readCurrentCheckoutIntent(request, credential),
+      200,
+    );
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
+const artistNoteHandler = async (request: PayloadRequest) => {
+  try {
+    requireSameOrigin(request);
+    requireNoQueryString(request);
+    const { artistNote } = parseArtistNoteRequest(
+      await readStorefrontJson(request, 16 * 1024),
+    );
+    const credential = readRequiredCredential(request);
+    return jsonResponse(
+      await saveCheckoutIntentArtistNote({ artistNote, credential, request }),
       200,
     );
   } catch (error) {
@@ -227,6 +246,11 @@ export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
     handler: currentHandler,
     method: "get",
     path: "/storefront/checkout-intents/current",
+  },
+  {
+    handler: artistNoteHandler,
+    method: "put",
+    path: "/storefront/checkout-intents/current/artist-note",
   },
   {
     handler: checkoutStatusHandler,

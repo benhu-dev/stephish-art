@@ -95,6 +95,9 @@
 .review-totals div { display: flex; justify-content: space-between; padding: 5px 2px; border-bottom: 1px dotted currentColor; }
 .review-totals dd { margin: 0; font-weight: 700; }
 .review-totals .review-total { padding-top: 9px; border-bottom: 0; font-size: 18px; }
+.review-artist-note { max-width: 400px; margin: 8px auto 0; padding: 8px 10px; border: 1px dashed currentColor; font: 12px/1.4 Arial, sans-serif; }
+.review-artist-note strong { display: block; margin-bottom: 3px; }
+.review-artist-note p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: Georgia, serif; }
 .secure-checkout-button, .continue-button {
   border: 1px solid #623348; padding: 11px 18px; color: #fff9e8; background: var(--modal-pink);
   box-shadow: 3px 4px 0 #623348; font: 700 11px/1 Arial, sans-serif; letter-spacing: .6px; cursor: pointer;

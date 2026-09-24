@@ -148,14 +148,17 @@ const readBoundedText = async (
   return Buffer.concat(chunks, totalBytes).toString("utf8");
 };
 
-export const readStorefrontJson = async (request: StorefrontWebRequest) => {
+export const readStorefrontJson = async (
+  request: StorefrontWebRequest,
+  maximumBytes = MAX_JSON_BYTES,
+) => {
   const contentType = request.headers.get("content-type")?.split(";", 1)[0];
   if (contentType?.trim().toLowerCase() !== "application/json") {
     throw new StorefrontApiError(415, "UNSUPPORTED_CONTENT_TYPE");
   }
 
   try {
-    const text = await readBoundedText(request, MAX_JSON_BYTES);
+    const text = await readBoundedText(request, maximumBytes);
     return JSON.parse(text) as unknown;
   } catch (error) {
     if (error instanceof StorefrontApiError) throw error;

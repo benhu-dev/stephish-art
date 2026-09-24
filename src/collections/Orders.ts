@@ -1,5 +1,10 @@
 import type { CollectionConfig, PayloadRequest } from "payload";
 
+import {
+  MAX_ARTIST_NOTE_CHARACTERS,
+  normalizeArtistNote,
+} from "../server/storefront/artistNote";
+
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   Boolean(user);
 
@@ -80,6 +85,21 @@ export const Orders: CollectionConfig = {
 
         return value >= 1 || "Amount must be at least one cent.";
       },
+    },
+    {
+      name: "artistNote",
+      type: "textarea",
+      access: {
+        update: denyAccess,
+      },
+      admin: {
+        description: "Immutable customer note snapshot captured at payment fulfillment.",
+      },
+      hooks: {
+        beforeValidate: [({ value }) =>
+          typeof value === "string" ? normalizeArtistNote(value) : value],
+      },
+      maxLength: MAX_ARTIST_NOTE_CHARACTERS,
     },
     {
       name: "currency",

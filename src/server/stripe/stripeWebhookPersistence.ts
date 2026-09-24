@@ -20,6 +20,7 @@ export type WebhookEventEnvelope = {
 
 export type WebhookIntent = {
   amountCents: number;
+  artistNote: string | null;
   attemptId: string | null;
   checkoutStartedAt: string | null;
   expiresAt: string;
@@ -42,6 +43,7 @@ export type WebhookUpload = {
 
 export type WebhookOrder = {
   amountCents: number;
+  artistNote: string | null;
   checkoutIntentId: number;
   currency: string;
   id: number;
@@ -71,7 +73,7 @@ export const lockWebhookIntent = async (
   intentId: number,
 ): Promise<WebhookIntent | null> => {
   const result = await transaction.database.execute(sql`
-    SELECT id, status, amount_cents, expires_at, checkout_attempt_id,
+    SELECT id, status, amount_cents, artist_note, expires_at, checkout_attempt_id,
       checkout_started_at, shipping_amount_cents, total_amount_cents,
       stripe_checkout_session_id, stripe_checkout_session_expires_at
     FROM public.checkout_intents
@@ -83,6 +85,7 @@ export const lockWebhookIntent = async (
 
   return {
     amountCents: Number(row.amount_cents),
+    artistNote: typeof row.artist_note === "string" ? row.artist_note : null,
     attemptId:
       typeof row.checkout_attempt_id === "string"
         ? row.checkout_attempt_id
@@ -144,7 +147,7 @@ export const readWebhookOrderConflicts = async (
   paymentIntentId: string,
 ): Promise<WebhookOrder[]> => {
   const result = await transaction.database.execute(sql`
-    SELECT id, checkout_intent_id, amount_cents, currency,
+    SELECT id, checkout_intent_id, amount_cents, artist_note, currency,
       stripe_checkout_session_id, stripe_payment_intent_id
     FROM public.orders
     WHERE checkout_intent_id = ${intentId}
@@ -155,6 +158,7 @@ export const readWebhookOrderConflicts = async (
 
   return result.rows.map((row) => ({
     amountCents: Number(row.amount_cents),
+    artistNote: typeof row.artist_note === "string" ? row.artist_note : null,
     checkoutIntentId: Number(row.checkout_intent_id),
     currency: String(row.currency),
     id: Number(row.id),

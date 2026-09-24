@@ -13,6 +13,7 @@ import {
 const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), "utf8");
 const responseBody = ({ amountCents = 825, minimumAmountCents = 500 } = {}) => ({
   amountCents,
+  artistNote: "",
   expiresAt: "2026-09-22T12:00:00.000Z",
   limits: {
     allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
@@ -80,7 +81,7 @@ test("201 and 200 return only authoritative amount, limits, safe uploads, and cr
     });
     assert.deepEqual(result, {
       ok: true,
-      value: { amountCents: 900, limits: body.limits, uploads: [], created: status === 201 },
+      value: { amountCents: 900, artistNote: "", limits: body.limits, uploads: [], created: status === 201 },
     });
     assert.equal(/expiresAt|status|token|hash/i.test(JSON.stringify(result)), false);
   }

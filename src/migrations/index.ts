@@ -7,6 +7,7 @@ import * as migration_20260915_071331_add_order_uploads from './20260915_071331_
 import * as migration_20260915_102514_add_checkout_intents from './20260915_102514_add_checkout_intents';
 import * as migration_20260917_080014_add_stripe_checkout_sessions from './20260917_080014_add_stripe_checkout_sessions';
 import * as migration_20260918_073547_add_stripe_webhook_fulfillment from './20260918_073547_add_stripe_webhook_fulfillment';
+import * as migration_20260924_075033_persist_artist_note from './20260924_075033_persist_artist_note';
 
 export const migrations = [
   {
@@ -52,6 +53,11 @@ export const migrations = [
   {
     up: migration_20260918_073547_add_stripe_webhook_fulfillment.up,
     down: migration_20260918_073547_add_stripe_webhook_fulfillment.down,
-    name: '20260918_073547_add_stripe_webhook_fulfillment'
+    name: '20260918_073547_add_stripe_webhook_fulfillment',
+  },
+  {
+    up: migration_20260924_075033_persist_artist_note.up,
+    down: migration_20260924_075033_persist_artist_note.down,
+    name: '20260924_075033_persist_artist_note'
   },
 ];

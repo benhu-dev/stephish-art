@@ -20,6 +20,7 @@ test("Orders has exactly the approved non-auth field contract", () => {
   assert.equal(Orders.disableDuplicate, true);
   assert.deepEqual(Object.keys(fieldsByName).sort(), [
     "amountCents",
+    "artistNote",
     "checkoutIntent",
     "completedAt",
     "contactEmail",

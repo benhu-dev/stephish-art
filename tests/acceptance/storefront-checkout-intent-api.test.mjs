@@ -37,6 +37,10 @@ test("root storefront endpoints have the exact route and method contract", () =>
       { method: "post", path: "/storefront/checkout-intents" },
       { method: "get", path: "/storefront/checkout-intents/current" },
       {
+        method: "put",
+        path: "/storefront/checkout-intents/current/artist-note",
+      },
+      {
         method: "get",
         path: "/storefront/checkout-intents/current/status",
       },
@@ -91,6 +95,7 @@ test("safe current state exposes only checkout amount snapshots after reservatio
 
   assert.deepEqual(response, {
     amountCents: 725,
+    artistNote: "",
     expiresAt: "2026-09-17T00:00:00.000Z",
     limits: {
       ...STOREFRONT_SAFE_LIMITS,
@@ -116,6 +121,7 @@ test("safe response and limits omit every private persistence field", () => {
     intent: {
       accessTokenHash: "a".repeat(64),
       amountCents: 725,
+      artistNote: "  private\r\nnote  ",
       deleteAfter: "2026-09-18T00:00:00.000Z",
       expiresAt: "2026-09-17T00:00:00.000Z",
       id: 123,
@@ -137,6 +143,7 @@ test("safe response and limits omit every private persistence field", () => {
 
   assert.deepEqual(response, {
     amountCents: 725,
+    artistNote: "private\nnote",
     expiresAt: "2026-09-17T00:00:00.000Z",
     limits: {
       ...STOREFRONT_SAFE_LIMITS,

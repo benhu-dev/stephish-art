@@ -1,170 +1,159 @@
-# Phase 2 — Unit 2.12.3: Restore Private Photo Previews After Refresh
+# Phase 2 — Unit 2.13: Persist the Private Artist Note
 
 ## Goal
 
-Fix the frontend so server-confirmed private photos automatically load and display after a full page refresh and Checkout Intent resume.
+Persist the optional “Private note for the artist” across refresh and copy it into the fulfilled Order.
 
-This is a focused correction to the current uncommitted Unit 2.12.2 work.
+Keep this as one cohesive vertical slice. Do not activate the final Stripe Checkout button.
 
-## Confirmed Failure
+## Baseline and Scope
 
-Manual reproduction already established:
+Unit 2.12.3 is committed and pushed. Record HEAD and `git status --short`. The only expected initial modification is `mission.md`.
 
-1. A valid photo was uploaded successfully.
+Read `AGENTS.md`, then inspect only the existing implementations directly related to:
 
-2. The page was fully refreshed.
+* Checkout Intents
+* Orders
+* Storefront Intent endpoints and services
+* Checkout modal Photo and Review steps
+* Webhook Order fulfillment
+* Payload migrations and generated types
 
-3. The checkout modal was reopened.
+Do not broadly reread or retest the postcard scene, private preview implementation, Storage adapter, Stripe Checkout gateway, success/cancel pages, or unrelated collections unless a direct compile failure requires it.
 
-4. Saving the amount resumed the existing Checkout Intent.
+Never print or modify `.env.local`. Do not commit or push.
 
-5. The response correctly included the confirmed upload metadata:
+## Data Contract
 
-   * `status: draft`
-   * upload `id: 263`
-   * `position: 1`
-   * `mimeType: image/jpeg`
-   * `sizeBytes: 2140967`
+Add optional plain-text `artistNote` fields to Checkout Intents and Orders.
 
-6. The photo step displayed the “Uploaded JPEG” placeholder.
+Rules:
 
-7. DevTools Network showed no request containing `preview`.
+* Maximum 1,000 characters.
+* Normalize CRLF to LF.
+* Trim outer whitespace.
+* Store blank or whitespace-only input as `null`.
+* Preserve internal line breaks.
+* Treat it as untrusted private text.
+* Never render it as HTML or Markdown.
 
-The browser never called:
+The Order field is an immutable snapshot created only through trusted webhook fulfillment. Admins may read it but not edit it.
 
-`GET /api/storefront/checkout-intents/current/uploads/263/preview`
+Create, review, and apply one focused migration. Regenerate Payload types.
 
-Therefore the known primary defect is in the frontend preview trigger or asynchronous state hydration. Intent-cookie authentication, Intent resume, and upload metadata restoration are already working.
+## Controlled Endpoint
 
-The observed upload ID is diagnostic evidence only. Do not assume it still exists or modify it.
+Add:
 
-## Baseline
+`PUT /api/storefront/checkout-intents/current/artist-note`
 
-* Preserve all current uncommitted Unit 2.12.2 changes.
-* `mission.md` is intentionally modified.
-* Preserve all existing user records and Storage objects.
-* Do not require a clean working tree.
-* Record starting HEAD and Git status.
-* Do not commit or push.
+Contract:
 
-## Required Fix
+* Existing HttpOnly Intent cookie authentication.
+* Same-origin `Origin` required.
+* `application/json` only.
+* Accept exactly `{"artistNote":"..."}`.
+* Reject missing, extra, malformed, non-string, or over-limit input.
+* Permit only unexpired `draft` Intents.
+* Use `Cache-Control: no-store`.
+* Return only the normalized `artistNote`, using an empty string when stored as `null`.
+* Preserve existing generic credential errors.
 
-When confirmed uploads arrive asynchronously after the photo UI has mounted:
+Include `artistNote` in authenticated create/resume and current safe responses so a saved value can be restored after refresh.
 
-* Automatically request each confirmed upload through its existing protected preview endpoint.
-* Use the upload ID returned by the authenticated Intent response.
-* Issue exactly one active preview request per current confirmed upload.
-* Use same-origin credentials and `cache: no-store`.
-* Show the artistic placeholder while loading.
-* Replace it with the actual image after a successful response.
-* Confirm the rendered image has non-zero natural dimensions.
-* On failure, retain the placeholder and display the existing retry action.
-* Retry must issue a new request and render the image on success.
-* Do not require another refresh, navigation, Replace action, or re-upload.
-* Do not fetch server previews for new local files that already have object URLs.
-* Abort obsolete requests when uploads are removed, replaced, or the modal unmounts.
-* Revoke all replaced or discarded blob URLs.
-* Preserve Photo and Review previews, Replace, Remove, fixed positions, and current styling.
-* Keep the final Checkout action non-operative.
+Do not expose it through unauthenticated routes, URLs, logs, cookies, browser storage, Stripe metadata, or errors.
 
-Inspect effect dependencies, upload identity tracking, request-deduplication state, stale closures, and any logic that marks a restored upload as already requested.
+## Frontend
 
-Do not change the protected endpoint contract unless, after the frontend begins calling it, direct evidence reveals a separate endpoint defect. If a secondary defect appears, make only the smallest necessary correction and report it.
+Keep the current note field and artistic styling.
 
-## Red-First Regression
+When Continue is selected from Photos:
 
-Add a focused regression reproducing the real ordering:
+1. Finish or reconcile the selected photo uploads.
+2. Save the note.
+3. Enter Review only after both operations succeed.
 
-1. Photo UI mounts with no confirmed uploads.
-2. Intent resume completes asynchronously.
-3. Confirmed upload metadata is added to client state.
-4. Exactly one protected preview request starts automatically.
-5. A successful image response creates a blob URL.
-6. The actual image renders.
+Requirements:
 
-Also cover:
+* One pending state; prevent duplicate submission.
+* A failed note save stays on Photos, preserves the text, and is retryable.
+* Do not repeat successful photo uploads when retrying the note.
+* Restore the confirmed note after refresh and Intent resume.
+* Going Back and editing it updates the saved value.
+* Clearing it persists the cleared value.
+* Review shows the server-confirmed note only when non-empty.
+* HTML-like input renders as ordinary text.
+* Final Checkout remains non-operative.
 
-* No duplicate request after unrelated rerenders.
-* Local previews cause no server preview request.
-* Failed request exposes Retry.
-* Retry makes one new request and succeeds.
-* Remove, Replace, and unmount abort obsolete requests and clean blob URLs.
-* Review uses the restored preview correctly.
+## Fulfillment
 
-Do not satisfy this test by mounting the component with uploads already populated.
+In the existing paid webhook transaction, copy the normalized Intent note into the Order.
 
-## Real Browser Verification
+Webhook replay or concurrency must continue producing one Order with the same immutable note snapshot.
 
-Use an isolated browser context and uniquely identifiable synthetic image:
+Do not otherwise change Stripe, Customer, payment, upload, or fulfillment behavior. Do not make real Stripe requests for this Unit.
 
-1. Run the production build and production server.
-2. Open the storefront.
-3. Save a valid amount through the real endpoint.
-4. Upload one image through the real photo UI.
-5. Confirm its database row and private Storage object exist.
-6. Perform a full page reload.
-7. Reopen the modal and resume the same Intent.
-8. Advance to Photos.
-9. Confirm the browser automatically requests the protected preview.
-10. Confirm:
+## Focused Verification Only
 
-    * the request returns `200`,
-    * the MIME type matches,
-    * required private/no-store/nosniff headers remain,
-    * the image renders with non-zero natural dimensions,
-    * the placeholder is replaced,
-    * no console errors occur,
-    * and no cookie, token, hash, Storage key, bucket name, filename, signed URL, or credential is exposed.
+Add focused red-first coverage for:
 
-A mocked browser check is not sufficient for completion.
+* Normalization, clearing, Unicode, line breaks, 1,000-character boundary, and rejection over the limit.
+* Exact endpoint contract, cookie authentication, same-origin enforcement, draft/expiry enforcement, and no mutation on invalid input.
+* Frontend save, pending, failure retry, no duplicate photo upload, refresh restore, edit, clear, and Review rendering.
+* Webhook fulfillment copies the note exactly once and replay retains the same snapshot.
+* The note does not enter Stripe parameters, URLs, logs, cookies, or browser storage.
 
-## Scope Limits
+Run:
 
-Do not implement or change:
-
-* Expired Intent cleanup or scheduled jobs
-* Stripe or Checkout Session behavior
-* Final Checkout button behavior
-* Customer or Order creation
-* Database schemas or migrations
-* Dependencies, lockfiles, or environment variables
-* Cookie format or authentication rules
-* Storage privacy or access policies
-* Public or signed image URLs
-* Narrative animations or unrelated styling
-
-Never print or log environment values, cookies, raw tokens, image contents, signatures, or private Storage identifiers.
-
-## Validation
-
-Run only:
-
-* Focused preview/photo client tests
-* Production-browser upload → refresh → resume regression
-* Focused private Storage lifecycle
+* Only the new or directly affected acceptance/integration tests
+* One focused modal browser check for save → Review → refresh → restore
+* Payload type generation
+* Migration status
 * TypeScript
-* ESLint
-* Production build
+* ESLint once at the end
+* Production build once at the end
 * `git diff --check`
 
-Use only uniquely named synthetic records and files. Remove every fixture, Storage object, cookie, and browser profile created by this task. Preserve baseline data and report database and Storage counts before and after.
+Do not run:
 
-Stop all task-created servers and browsers.
+* Full acceptance suite
+* Real Stripe lifecycle
+* Full webhook payment matrix
+* Storage lifecycle
+* Preview lifecycle
+* Postcard scene regression
+* Multiple viewport/theme/reduced-motion matrix
+* GraphQL denial regression
+* Unrelated route checks
+
+Use uniquely identified synthetic fixtures and remove only those fixtures. Confirm affected Intent and Order counts return to their starting values. No full database or Storage audit is required.
+
+Stop task-created processes.
+
+## Excluded Work
+
+Do not add or change:
+
+* Final Checkout behavior
+* Real Stripe Sessions or payments
+* Intent cleanup jobs
+* Email
+* Customer fields
+* Storage or preview behavior
+* Dependencies or environment variables
+* Narrative or unrelated UI
+* Unit 2.14
 
 ## Completion Report
 
-Report:
+Provide a concise report containing:
 
 * `COMPLETE` or `BLOCKED`
 * Starting and ending HEAD
-* Proven code-level root cause
-* Exact files changed
-* Red-first regression result
-* Real preview request URL pattern, HTTP status, and rendered-image evidence
-* Test, TypeScript, lint, build, browser, and lifecycle results
-* Before/after database and Storage counts
-* Synthetic cleanup result
-* Final Git status
-* Confirmation that no Intent cleanup, Stripe, schema, migration, dependency, environment, public Storage, or unrelated UI change was introduced
+* Root files changed
+* Endpoint, normalization, frontend restore, and Order snapshot results
+* Migration and focused validation results
+* Synthetic cleanup and final Git status
+* Confirmation that excluded systems were not changed or tested
 
-Do not report `COMPLETE` unless the real production-browser upload → full refresh → Intent resume flow automatically displays the private image.
+Do not commit or push.

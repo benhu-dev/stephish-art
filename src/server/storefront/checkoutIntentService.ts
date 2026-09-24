@@ -5,6 +5,7 @@ import { buildSafeCheckoutIntentResponse } from "./checkoutIntentApiContract";
 import { authorizeCheckoutIntent } from "./checkoutIntentAccess";
 import type { CheckoutIntentCredential } from "./checkoutIntentCookie";
 import { StorefrontApiError } from "./storefrontApiError";
+import type { normalizeArtistNote } from "./artistNote";
 
 export const readMinimumAmountCents = async (request: PayloadRequest) => {
   const settings = await request.payload.findGlobal({
@@ -45,6 +46,7 @@ const safeState = async (
   request: PayloadRequest,
   intent: {
     amountCents: number;
+    artistNote?: string | null;
     expiresAt: string;
     id: number;
     shippingAmountCents?: number | null;
@@ -77,6 +79,8 @@ export const createCheckoutIntent = async (
   });
   const intent = {
     amountCents: Number(document.amountCents),
+    artistNote:
+      typeof document.artistNote === "string" ? document.artistNote : null,
     expiresAt: String(document.expiresAt),
     id: Number(document.id),
     status: String(document.status),
@@ -112,6 +116,8 @@ export const createOrResumeCheckoutIntent = async ({
       });
       const intent = {
         amountCents: Number(updated.amountCents),
+        artistNote:
+          typeof updated.artistNote === "string" ? updated.artistNote : null,
         expiresAt: String(updated.expiresAt),
         id: Number(updated.id),
         status: String(updated.status),
@@ -147,4 +153,33 @@ export const readCurrentCheckoutIntent = async (
     readMinimumAmountCents(request),
   ]);
   return safeState(request, intent, minimumAmountCents);
+};
+
+export const saveCheckoutIntentArtistNote = async ({
+  artistNote,
+  credential,
+  request,
+}: {
+  artistNote: ReturnType<typeof normalizeArtistNote>;
+  credential: CheckoutIntentCredential;
+  request: PayloadRequest;
+}) => {
+  const intent = await authorizeCheckoutIntent(request, credential);
+  if (intent.status !== "draft") {
+    throw new StorefrontApiError(409, "CHECKOUT_ALREADY_STARTED");
+  }
+
+  const updated = await request.payload.update({
+    collection: "checkout-intents",
+    data: { artistNote },
+    depth: 0,
+    id: intent.id,
+    overrideAccess: true,
+    req: request,
+  });
+
+  return {
+    artistNote:
+      typeof updated.artistNote === "string" ? updated.artistNote : "",
+  };
 };

@@ -8,7 +8,7 @@ import {
   parseUsdAmount,
   validatePhotoSelection,
 } from "../clientCheckoutDraft";
-import { submitCheckoutAmount } from "../checkoutIntentClient";
+import { saveCheckoutArtistNote, submitCheckoutAmount } from "../checkoutIntentClient";
 import { deletePhoto, readCurrentPhotos, uploadPhoto } from "../checkoutPhotoClient";
 import { createCheckoutPhotoPreviewManager } from "../checkoutPhotoPreviewClient";
 import type { SafeUpload } from "../checkoutIntentClient";
@@ -47,6 +47,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoPending, setPhotoPending] = useState(false);
   const [note, setNote] = useState("");
+  const [confirmedNote, setConfirmedNote] = useState("");
   const [notice, setNotice] = useState("");
 
   const getPreviewManager = useCallback(() => {
@@ -312,6 +313,8 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         return;
       }
       setAmountCents(result.value.amountCents);
+      setNote(result.value.artistNote);
+      setConfirmedNote(result.value.artistNote);
       setLimits(result.value.limits);
       mergeUploads(result.value.uploads, result.value.created);
       if (usedCustomAmount || result.value.amountCents !== submittedAmountCents) {
@@ -366,6 +369,13 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         return;
       }
       if (photosRef.current.length > 0 && photosRef.current.every(({ server, status }) => server && status === "confirmed")) {
+        const noteResult = await saveCheckoutArtistNote(note);
+        if (!noteResult.ok) {
+          setPhotoError(noteResult.message);
+          return;
+        }
+        setNote(noteResult.value.artistNote);
+        setConfirmedNote(noteResult.value.artistNote);
         setStep(3);
       }
     } finally {
@@ -409,6 +419,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         />}
         {step === 3 && amountCents !== null && <CheckoutReviewStep
           amountCents={amountCents}
+          artistNote={confirmedNote}
           onFinish={() => setNotice("Your choices are saved in this preview. Secure checkout is not connected yet.")}
           onRetryPreview={retryPhotoPreview}
           photos={photos}

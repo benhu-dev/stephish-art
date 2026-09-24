@@ -95,6 +95,7 @@ const validateCompletedOrder = async (
     orders[0].sessionId === session.sessionId &&
     orders[0].paymentIntentId === session.paymentIntentId &&
     orders[0].amountCents === session.amountTotal &&
+    orders[0].artistNote === intent.artistNote &&
     orders[0].currency === "usd"
     ? orders[0]
     : null;
@@ -214,6 +215,7 @@ export const fulfillPaidStripeSession = async ({
       collection: "orders",
       data: {
         amountCents: session.amountTotal,
+        artistNote: intent.artistNote,
         checkoutIntent: intent.id,
         contactEmail: session.customerEmail,
         currency: "usd",

@@ -7,6 +7,7 @@ import { unauthorizedIntentError } from "./storefrontApiError";
 
 export type AuthorizedCheckoutIntent = {
   amountCents: number;
+  artistNote: string | null;
   checkoutAttemptId: string | null;
   deleteAfter: string;
   expiresAt: string;
@@ -59,6 +60,8 @@ export const authorizeCheckoutIntent = async (
 
   return {
     amountCents: Number(document.amountCents),
+    artistNote:
+      typeof document.artistNote === "string" ? document.artistNote : null,
     checkoutAttemptId:
       typeof document.checkoutAttemptId === "string"
         ? document.checkoutAttemptId

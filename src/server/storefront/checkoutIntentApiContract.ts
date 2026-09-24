@@ -1,4 +1,5 @@
 import { CHECKOUT_INTENT_POLICY } from "../checkout-intents/checkoutIntentPolicy";
+import { normalizeArtistNote } from "./artistNote";
 
 export const STOREFRONT_ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -15,6 +16,7 @@ export const STOREFRONT_SAFE_LIMITS = Object.freeze({
 
 type SafeIntentSource = {
   amountCents: number;
+  artistNote?: string | null;
   expiresAt: string;
   shippingAmountCents?: number | null;
   status: string;
@@ -44,6 +46,7 @@ export const buildSafeCheckoutIntentResponse = ({
   return {
     status: intent.status,
     amountCents: intent.amountCents,
+    artistNote: normalizeArtistNote(intent.artistNote ?? "") ?? "",
     expiresAt: intent.expiresAt,
     ...(hasSnapshots
       ? {

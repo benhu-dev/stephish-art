@@ -180,6 +180,10 @@ export interface Order {
   checkoutIntent: number | CheckoutIntent;
   contactEmail: string;
   amountCents: number;
+  /**
+   * Immutable customer note snapshot captured at payment fulfillment.
+   */
+  artistNote?: string | null;
   currency: 'usd';
   stripeCheckoutSessionId: string;
   stripePaymentIntentId: string;
@@ -211,6 +215,10 @@ export interface CheckoutIntent {
   id: number;
   status: 'draft' | 'checkout_pending' | 'checkout_created' | 'completed' | 'expired';
   amountCents: number;
+  /**
+   * Private note supplied by the customer for this checkout.
+   */
+  artistNote?: string | null;
   accessTokenHash: string;
   expiresAt: string;
   deleteAfter: string;
@@ -421,6 +429,7 @@ export interface OrdersSelect<T extends boolean = true> {
   checkoutIntent?: T;
   contactEmail?: T;
   amountCents?: T;
+  artistNote?: T;
   currency?: T;
   stripeCheckoutSessionId?: T;
   stripePaymentIntentId?: T;
@@ -453,6 +462,7 @@ export interface OrdersSelect<T extends boolean = true> {
 export interface CheckoutIntentsSelect<T extends boolean = true> {
   status?: T;
   amountCents?: T;
+  artistNote?: T;
   accessTokenHash?: T;
   expiresAt?: T;
   deleteAfter?: T;

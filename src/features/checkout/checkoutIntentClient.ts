@@ -7,7 +7,9 @@ import {
 } from "./clientCheckoutDraft";
 
 const CHECKOUT_INTENT_ENDPOINT = "/api/storefront/checkout-intents";
+const ARTIST_NOTE_ENDPOINT = `${CHECKOUT_INTENT_ENDPOINT}/current/artist-note`;
 const GENERIC_ERROR = "We couldn't save your amount right now. Please try again.";
+const GENERIC_NOTE_ERROR = "We couldn't save your note right now. Please try again.";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type SubmitOptions = { fetchImpl?: FetchLike; signal?: AbortSignal };
@@ -16,7 +18,7 @@ type SubmissionResult =
   | { message: string; ok: false };
 
 export type SafeUpload = { id: number; position: number; mimeType: string | null; sizeBytes: number | null };
-export type SafeIntentState = { amountCents: number; limits: CheckoutLimits; uploads: SafeUpload[] };
+export type SafeIntentState = { amountCents: number; artistNote: string; limits: CheckoutLimits; uploads: SafeUpload[] };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,7 +79,7 @@ const hasValidUploads = (value: unknown, limits: CheckoutLimits): value is SafeU
 
 export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
   if (!isRecord(value)) return null;
-  const baseKeys = ["amountCents", "expiresAt", "limits", "status", "uploads"];
+  const baseKeys = ["amountCents", "artistNote", "expiresAt", "limits", "status", "uploads"];
   const snapshotKeys = [...baseKeys, "shippingAmountCents", "totalAmountCents"];
   if (!hasExactKeys(value, baseKeys) && !hasExactKeys(value, snapshotKeys)) return null;
   const limits = parseLimits(value.limits);
@@ -86,6 +88,10 @@ export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
     || value.status !== "draft"
     || !isPositiveInteger(value.amountCents)
     || value.amountCents < limits.minimumAmountCents
+    || typeof value.artistNote !== "string"
+    || value.artistNote.length > 1_000
+    || value.artistNote.includes("\r")
+    || value.artistNote !== value.artistNote.trim()
     || typeof value.expiresAt !== "string"
     || !Number.isFinite(Date.parse(value.expiresAt))
     || !hasValidUploads(value.uploads, limits)
@@ -99,7 +105,7 @@ export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
       || value.totalAmountCents !== value.amountCents + value.shippingAmountCents
     ) return null;
   }
-  return { amountCents: value.amountCents, limits, uploads: value.uploads };
+  return { amountCents: value.amountCents, artistNote: value.artistNote, limits, uploads: value.uploads };
 };
 
 const errorMessage = (status: number) => {
@@ -109,6 +115,14 @@ const errorMessage = (status: number) => {
   if (status === 403) return "This request couldn't be verified. Please try again.";
   if (status === 409) return "This checkout can no longer be changed. Please close it and start again.";
   return GENERIC_ERROR;
+};
+
+const artistNoteErrorMessage = (status: number) => {
+  if (status === 422) return "Keep your note to 1,000 characters or fewer.";
+  if (status === 401) return "This checkout is unavailable in this browser. Please try again.";
+  if (status === 403) return "This request couldn't be verified. Please try again.";
+  if (status === 409) return "This checkout can no longer be changed. Please close it and start again.";
+  return GENERIC_NOTE_ERROR;
 };
 
 export async function submitCheckoutAmount(
@@ -137,5 +151,47 @@ export async function submitCheckoutAmount(
       return { message: "Saving was cancelled. Please try again.", ok: false };
     }
     return { message: "We couldn't save your amount. Check your connection and try again.", ok: false };
+  }
+}
+
+export async function saveCheckoutArtistNote(
+  artistNote: string,
+  { fetchImpl = globalThis.fetch, signal }: SubmitOptions = {},
+): Promise<
+  | { ok: true; value: { artistNote: string } }
+  | { message: string; ok: false }
+> {
+  if (typeof artistNote !== "string" || artistNote.length > 1_000) {
+    return { message: "Keep your note to 1,000 characters or fewer.", ok: false };
+  }
+  try {
+    const response = await fetchImpl(ARTIST_NOTE_ENDPOINT, {
+      body: JSON.stringify({ artistNote }),
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+      ...(signal ? { signal } : {}),
+    });
+    if (response.status !== 200) {
+      return { message: artistNoteErrorMessage(response.status), ok: false };
+    }
+    const value = await response.json() as unknown;
+    if (
+      !isRecord(value) ||
+      !hasExactKeys(value, ["artistNote"]) ||
+      typeof value.artistNote !== "string" ||
+      value.artistNote.length > 1_000 ||
+      value.artistNote.includes("\r") ||
+      value.artistNote !== value.artistNote.trim()
+    ) {
+      return { message: GENERIC_NOTE_ERROR, ok: false };
+    }
+    return { ok: true, value: { artistNote: value.artistNote } };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { message: "Saving was cancelled. Please try again.", ok: false };
+    }
+    return { message: "We couldn't save your note. Check your connection and try again.", ok: false };
   }
 }

@@ -1,0 +1,1 @@
+export const MAX_ARTIST_NOTE_CHARACTERS = 1_000;

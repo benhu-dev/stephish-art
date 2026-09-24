@@ -1,6 +1,10 @@
 import type { CollectionConfig, PayloadRequest } from "payload";
 
 import { CHECKOUT_INTENT_POLICY } from "../server/checkout-intents/checkoutIntentPolicy";
+import {
+  MAX_ARTIST_NOTE_CHARACTERS,
+  normalizeArtistNote,
+} from "../server/storefront/artistNote";
 
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   Boolean(user);
@@ -59,6 +63,18 @@ export const CheckoutIntents: CollectionConfig = {
 
         return value >= 1 || "Amount must be at least one cent.";
       },
+    },
+    {
+      name: "artistNote",
+      type: "textarea",
+      admin: {
+        description: "Private note supplied by the customer for this checkout.",
+      },
+      hooks: {
+        beforeValidate: [({ value }) =>
+          typeof value === "string" ? normalizeArtistNote(value) : value],
+      },
+      maxLength: MAX_ARTIST_NOTE_CHARACTERS,
     },
     {
       name: "accessTokenHash",

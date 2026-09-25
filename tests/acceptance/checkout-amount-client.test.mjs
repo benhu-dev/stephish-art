@@ -134,7 +134,7 @@ test("network, authorization, validation, and server failures stay safe and retr
   assert.equal(results.slice(0, 5).some(({ message }) => /private|UNAUTHORIZED|INVALID_AMOUNT|AMOUNT_BELOW_MINIMUM|INTERNAL_ERROR/.test(message)), false);
 });
 
-test("modal wires amount and photo steps while final Checkout stays local", async () => {
+test("modal wires amount, photo, and secure Checkout clients", async () => {
   const [modal, photo, review] = await Promise.all([
     read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
     read("src/features/checkout/components/CheckoutPhotoStep.tsx"),
@@ -143,8 +143,10 @@ test("modal wires amount and photo steps while final Checkout stays local", asyn
   assert.match(modal, /submitCheckoutAmount/);
   assert.match(modal, /uploadPhoto/);
   assert.match(modal, /deletePhoto/);
+  assert.match(modal, /requestCheckoutSession/);
   assert.match(modal, /Saving your amount…/);
   assert.match(modal, /requestControllerRef/);
-  assert.doesNotMatch(`${photo}\n${review}`, /fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|stripe/i);
-  assert.match(review, /type=["']button["'][^>]*>\s*Continue to Secure Checkout/s);
+  assert.doesNotMatch(`${photo}\n${review}`, /fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\//i);
+  assert.match(review, /type=["']button["']/);
+  assert.match(review, /Continue to Secure Checkout/);
 });

@@ -102,11 +102,18 @@
   border: 1px solid #623348; padding: 11px 18px; color: #fff9e8; background: var(--modal-pink);
   box-shadow: 3px 4px 0 #623348; font: 700 11px/1 Arial, sans-serif; letter-spacing: .6px; cursor: pointer;
 }
-.secure-checkout-button { display: block; margin: 15px auto 0; }
+.secure-checkout-button { display: block; min-width: 220px; margin: 15px auto 0; }
 .modal-actions { position: relative; z-index: 2; display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; }
 .modal-actions .continue-button { margin-left: auto; }
 .back-button { border: 0; border-bottom: 1px solid currentColor; padding: 7px 2px; color: inherit; background: transparent; font-weight: 700; cursor: pointer; }
-.continue-button:disabled { opacity: .42; box-shadow: none; cursor: not-allowed; }
+.secure-checkout-button:disabled, .continue-button:disabled { opacity: .42; box-shadow: none; cursor: not-allowed; }
+.recovery-step { display: grid; align-content: center; max-width: 500px; margin: auto; }
+.recovery-confirmation { padding: 15px; border: 1px dashed currentColor; text-align: center; font: 12px/1.5 Arial, sans-serif; }
+.recovery-confirmation p { margin: 0 0 14px; }
+.recovery-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.recovery-actions button { border: 1px solid currentColor; padding: 11px 18px; color: inherit; background: transparent; font: 700 11px/1 Arial, sans-serif; cursor: pointer; }
+.recovery-actions button:first-child { color: #fff9e8; background: var(--modal-pink); box-shadow: 3px 4px 0 #623348; }
+.recovery-actions button:disabled { opacity: .5; cursor: wait; }
 .modal-notice { min-height: 16px; margin: 10px 0 0; text-align: center; font: 11px/1.35 Arial, sans-serif; }
 .checkout-paper button:focus-visible, .checkout-paper input:focus-visible, .checkout-paper textarea:focus-visible {
   outline: 3px solid #efad3f; outline-offset: 3px;

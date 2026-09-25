@@ -125,7 +125,10 @@ export const reserveCheckoutAttempt = async (
     transaction = await beginStorefrontTransaction(request);
     const intent = await lockAndAuthorizeCheckoutIntent(transaction, credential);
     const expiresAtMilliseconds = new Date(intent.expiresAt).getTime();
-    if (expiresAtMilliseconds - now.getTime() < MINIMUM_SESSION_LIFETIME_MS) {
+    if (
+      intent.status === "draft" &&
+      expiresAtMilliseconds - now.getTime() < MINIMUM_SESSION_LIFETIME_MS
+    ) {
       await updateIntent(request, intent.id, { status: "expired" });
       await commitStorefrontTransaction(transaction);
       transaction = undefined;

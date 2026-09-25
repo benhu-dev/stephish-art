@@ -73,6 +73,7 @@ export const beginStorefrontTransaction = async (
 export const lockAndAuthorizeCheckoutIntent = async (
   transaction: StorefrontTransaction,
   credential: CheckoutIntentCredential,
+  { allowExpired = false }: { allowExpired?: boolean } = {},
 ): Promise<LockedCheckoutIntent> => {
   const result = await transaction.database.execute(sql`
     SELECT id, status, amount_cents, access_token_hash, expires_at, delete_after,
@@ -90,7 +91,10 @@ export const lockAndAuthorizeCheckoutIntent = async (
   }
 
   const expiresAt = new Date(String(row.expires_at));
-  if (!Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date()) {
+  if (
+    !Number.isFinite(expiresAt.getTime()) ||
+    (!allowExpired && expiresAt <= new Date())
+  ) {
     throw unauthorizedIntentError(true);
   }
 

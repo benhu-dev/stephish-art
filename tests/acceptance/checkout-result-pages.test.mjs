@@ -27,19 +27,22 @@ test("success page is noindex, scrubs legacy queries, and exposes every safe sta
 });
 
 test("cancel page retries only through the controlled endpoint with exactly an empty object", async () => {
-  const [page, client] = await Promise.all([
+  const [page, client, sessionClient] = await Promise.all([
     read("src/app/(frontend)/checkout/cancelled/page.tsx"),
     read("src/features/checkout/components/CheckoutCancelledActions.tsx"),
+    read("src/features/checkout/checkoutSessionClient.ts"),
   ]);
-  assert.match(page, /Payment was not completed\./);
+  assert.match(page, /Payment not completed/);
   assert.match(page, /No Order was created by visiting this page\./);
   assert.match(page, /robots:\s*\{[^}]*index:\s*false/s);
   assert.match(page, /referrer:\s*["']no-referrer["']/);
-  assert.match(client, /checkout-intents\/current\/checkout-session/);
-  assert.match(client, /JSON\.stringify\(\{\}\)/);
+  assert.match(client, /requestCheckoutSession/);
+  assert.match(sessionClient, /checkout-intents\/current\/checkout-session/);
+  assert.match(sessionClient, /JSON\.stringify\(\{\}\)/);
   assert.match(client, /checkoutUrl/);
-  assert.match(client, /Return home/);
-  assert.match(client, /Return to payment/);
+  assert.match(client, /Return Home/);
+  assert.match(client, /Resume Secure Checkout/);
+  assert.match(client, /Start a New Order/);
   assert.equal(/session_id|order_id|payment_intent/i.test(client), false);
   assert.equal(/stripe|webhook/i.test(client), false);
 });

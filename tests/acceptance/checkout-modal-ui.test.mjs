@@ -38,7 +38,7 @@ test("local photo rules accept only one to three bounded raster previews", () =>
   );
 });
 
-test("modal is keyboard accessible while photos, review, and final action remain local", async () => {
+test("modal is keyboard accessible while Review owns an accessible secure-checkout state", async () => {
   const [modal, amount, photo, review] = await Promise.all([
     read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
     read("src/features/checkout/components/CheckoutAmountStep.tsx"),
@@ -61,8 +61,15 @@ test("modal is keyboard accessible while photos, review, and final action remain
   assert.match(joined, /URL\.createObjectURL/);
   assert.match(joined, /URL\.revokeObjectURL/);
   assert.match(modal, /submitCheckoutAmount/);
-  assert.match(joined, /type=["']button["'][^>]*>\s*Continue to Secure Checkout/s);
-  assert.equal(/fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|payload\.|stripe/i.test(`${photo}\n${review}`), false);
+  assert.match(modal, /requestCheckoutSession/);
+  assert.match(modal, /window\.location\.assign\(result\.checkoutUrl\)/);
+  assert.match(modal, /checkoutPending/);
+  assert.match(modal, /requestControllerRef\.current !== controller/);
+  assert.match(review, /type=["']button["']/);
+  assert.match(review, /Continue to Secure Checkout/);
+  assert.match(review, /Opening secure checkout/);
+  assert.match(review, /role=["']alert["']/);
+  assert.equal(/fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|payload\./i.test(`${photo}\n${review}`), false);
 });
 
 test("art direction covers focus, themes, reduced motion, and both mobile orientations", async () => {

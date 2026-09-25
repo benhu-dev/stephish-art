@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 
 export default function CheckoutCancelledPage() {
   return (
-    <CheckoutResultLayout title="Payment was not completed.">
+    <CheckoutResultLayout title="Payment not completed">
       <p>No Order was created by visiting this page.</p>
-      <p>You can safely return home or try the same protected checkout again.</p>
+      <p>Resume the protected checkout, or explicitly start a new order.</p>
       <CheckoutCancelledActions />
     </CheckoutResultLayout>
   );

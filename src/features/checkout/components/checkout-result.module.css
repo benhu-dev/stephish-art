@@ -126,6 +126,15 @@
   min-height: 1.5em;
 }
 
+.confirmation {
+  border: 1px dashed currentColor;
+  flex-basis: 100%;
+  padding: 1rem;
+}
+
+.confirmation p { margin: 0 0 1rem; }
+.confirmation button { margin-right: .8rem; }
+
 @media (prefers-color-scheme: dark) {
   .page {
     --ink: #dcebdc;

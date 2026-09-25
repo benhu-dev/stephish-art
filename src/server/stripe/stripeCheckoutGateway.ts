@@ -23,6 +23,7 @@ export type StripeCheckoutGateway = {
   createSession: (
     input: StripeCheckoutInput,
   ) => Promise<SafeStripeCheckoutSession>;
+  expireSession: (id: string) => Promise<SafeStripeCheckoutSession>;
   retrieveSession: (id: string) => Promise<SafeStripeCheckoutSession>;
 };
 
@@ -134,6 +135,8 @@ export const createStripeCheckoutGateway = (): StripeCheckoutGateway => {
           { idempotencyKey: stripeCheckoutIdempotencyKey(input.attemptId) },
         ),
       ),
+    expireSession: async (id) =>
+      validateStripeCheckoutSession(await stripe.checkout.sessions.expire(id)),
     retrieveSession: async (id) =>
       validateStripeCheckoutSession(await stripe.checkout.sessions.retrieve(id)),
   };

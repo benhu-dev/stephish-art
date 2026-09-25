@@ -103,7 +103,7 @@ const markExpiredSession = async (
   }
 };
 
-export const createOrResumeStripeCheckoutSession = async ({
+export const resolveStripeCheckoutSession = async ({
   credential,
   gateway = createStripeCheckoutGateway(),
   now = new Date(),
@@ -146,11 +146,22 @@ export const createOrResumeStripeCheckoutSession = async ({
     session,
     testProbe,
   );
+  return { created: reservation.createdAttempt, session };
+};
+
+export const createOrResumeStripeCheckoutSession = async (options: {
+  credential: CheckoutIntentCredential;
+  gateway?: StripeCheckoutGateway;
+  now?: Date;
+  request: PayloadRequest;
+  testProbe?: CheckoutSessionTestProbe;
+}) => {
+  const { created, session } = await resolveStripeCheckoutSession(options);
   if (session.status === "complete") {
     throw new StorefrontApiError(409, "CHECKOUT_PROCESSING");
   }
   if (session.status === "expired") {
-    await markExpiredSession(request, credential, session.id);
+    await markExpiredSession(options.request, options.credential, session.id);
     throw new StorefrontApiError(410, "CHECKOUT_EXPIRED", {
       clearCookie: true,
     });
@@ -160,7 +171,7 @@ export const createOrResumeStripeCheckoutSession = async ({
   }
 
   return {
-    created: reservation.createdAttempt,
+    created,
     response: {
       checkoutUrl: session.url,
       expiresAt: session.expiresAt,

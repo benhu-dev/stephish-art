@@ -60,6 +60,10 @@ test("root storefront endpoints have the exact route and method contract", () =>
         method: "post",
         path: "/storefront/checkout-intents/current/checkout-session",
       },
+      {
+        method: "post",
+        path: "/storefront/checkout-intents/current/abandon",
+      },
     ],
   );
 });

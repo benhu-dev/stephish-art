@@ -2,6 +2,7 @@
 
 import { type ChangeEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import {
   INITIAL_CHECKOUT_LIMITS,
   formatUsdInput,
@@ -9,11 +10,14 @@ import {
   validatePhotoSelection,
 } from "../clientCheckoutDraft";
 import { saveCheckoutArtistNote, submitCheckoutAmount } from "../checkoutIntentClient";
+import { abandonCurrentCheckout, readCurrentCheckoutState } from "../checkoutRecoveryClient";
+import { requestCheckoutSession } from "../checkoutSessionClient";
 import { deletePhoto, readCurrentPhotos, uploadPhoto } from "../checkoutPhotoClient";
 import { createCheckoutPhotoPreviewManager } from "../checkoutPhotoPreviewClient";
 import type { SafeUpload } from "../checkoutIntentClient";
 import { CheckoutAmountStep } from "./CheckoutAmountStep";
 import { CheckoutPhotoStep, type PhotoEntry } from "./CheckoutPhotoStep";
+import { CheckoutRecoveryStep } from "./CheckoutRecoveryStep";
 import { CheckoutReviewStep } from "./CheckoutReviewStep";
 import "./checkout-modal.css";
 
@@ -29,6 +33,7 @@ const matchesLocalFile = (upload: SafeUpload, file: File) =>
   upload.mimeType === file.type && upload.sizeBytes === file.size;
 
 export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Props) {
+  const router = useRouter();
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const replacePositionRef = useRef<number | null>(null);
@@ -36,6 +41,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   const photosRef = useRef<PhotoEntry[]>([]);
   const previewManagerRef = useRef<ReturnType<typeof createCheckoutPhotoPreviewManager> | null>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
+  const hydratedRef = useRef(false);
   const photoActionRef = useRef(false);
   const [step, setStep] = useState(1);
   const [amountCents, setAmountCents] = useState<number | null>(null);
@@ -48,7 +54,13 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   const [photoPending, setPhotoPending] = useState(false);
   const [note, setNote] = useState("");
   const [confirmedNote, setConfirmedNote] = useState("");
-  const [notice, setNotice] = useState("");
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutPending, setCheckoutPending] = useState(false);
+  const [confirmStartOver, setConfirmStartOver] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
+  const [recovery, setRecovery] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState<"abandon" | "resume" | null>(null);
 
   const getPreviewManager = useCallback(() => {
     previewManagerRef.current ??= createCheckoutPhotoPreviewManager();
@@ -56,7 +68,9 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
   }, []);
 
   useEffect(() => () => {
-    requestControllerRef.current?.abort();
+    const controller = requestControllerRef.current;
+    requestControllerRef.current = null;
+    controller?.abort();
     photosRef.current.forEach(({ local }) => { if (local) URL.revokeObjectURL(local.previewUrl); });
     const previewManager = previewManagerRef.current;
     previewManagerRef.current = null;
@@ -67,6 +81,9 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
     requestControllerRef.current?.abort();
     requestControllerRef.current = null;
     setAmountPending(false);
+    setCheckoutPending(false);
+    setHydrating(false);
+    setRecoveryPending(null);
     onClose();
   }, [onClose]);
 
@@ -150,7 +167,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
     }
   }, [getPreviewManager]);
 
-  const mergeUploads = (uploads: SafeUpload[], created = false) => {
+  const mergeUploads = useCallback((uploads: SafeUpload[], created = false) => {
     const existing = photosRef.current;
     const retainedServerIds = new Set(uploads.map((upload) => upload.id));
     for (const old of existing) {
@@ -187,12 +204,80 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
       else if (old?.local) next.push({ position, local: old.local, status: created || old.status !== "failed" ? "local" : "failed" });
     }
     commitPhotos(next);
-  };
-  const unavailableIntent = () => {
-    mergeUploads([], true);
-    setStep(1);
-    setAmountError("This checkout has expired or is unavailable. Save your amount to continue.");
+  }, [commitPhotos]);
+
+  const resetCheckoutClientState = useCallback((message: string | null = null) => {
+    const controller = requestControllerRef.current;
+    requestControllerRef.current = null;
+    controller?.abort();
+    photosRef.current.forEach(({ local }) => {
+      if (local) URL.revokeObjectURL(local.previewUrl);
+    });
+    photosRef.current = [];
+    previewManagerRef.current?.dispose();
+    previewManagerRef.current = null;
+    photoActionRef.current = false;
+    hydratedRef.current = true;
+    setAmountCents(null);
+    setCustomAmount("");
+    setAmountError(message);
+    setAmountPending(false);
+    setLimits(INITIAL_CHECKOUT_LIMITS);
+    setPhotos([]);
     setPhotoError(null);
+    setPhotoPending(false);
+    setNote("");
+    setConfirmedNote("");
+    setCheckoutError(null);
+    setCheckoutPending(false);
+    setConfirmStartOver(false);
+    setHydrating(false);
+    setRecovery(false);
+    setRecoveryError(null);
+    setRecoveryPending(null);
+    setStep(1);
+  }, []);
+
+  useEffect(() => {
+    if (!open || hydratedRef.current || requestControllerRef.current) return;
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    setHydrating(true);
+    void readCurrentCheckoutState({ signal: controller.signal }).then((result) => {
+      if (requestControllerRef.current !== controller) return;
+      hydratedRef.current = result.kind !== "aborted";
+      if (result.kind === "draft") {
+        setAmountCents(result.state.amountCents);
+        setCustomAmount(formatUsdInput(result.state.amountCents));
+        setLimits(result.state.limits);
+        setNote(result.state.artistNote);
+        setConfirmedNote(result.state.artistNote);
+        mergeUploads(result.state.uploads);
+      } else if (result.kind === "recovery") {
+        setRecovery(true);
+      } else if (result.kind === "processing") {
+        router.push("/checkout/success");
+      } else if (result.kind === "fresh") {
+        resetCheckoutClientState();
+      } else if (result.kind === "failed") {
+        setAmountError("We couldn't restore your checkout. You can try saving your amount again.");
+      }
+    }).finally(() => {
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setHydrating(false);
+      }
+    });
+    return () => {
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        controller.abort();
+        setHydrating(false);
+      }
+    };
+  }, [mergeUploads, open, resetCheckoutClientState, router]);
+  const unavailableIntent = () => {
+    resetCheckoutClientState("That checkout is no longer available. Start a fresh order below.");
   };
   const acceptFiles = async (selected: File[], replacePosition: number | null) => {
     if (photoActionRef.current) return;
@@ -309,6 +394,27 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
       const result = await submitCheckoutAmount(submittedAmountCents, { signal: controller.signal });
       if (requestControllerRef.current !== controller) return;
       if (!result.ok) {
+        if (result.reason === "conflict") {
+          const current = await readCurrentCheckoutState({ signal: controller.signal });
+          if (requestControllerRef.current !== controller) return;
+          if (current.kind === "recovery") {
+            setRecovery(true);
+            setRecoveryError(null);
+            return;
+          }
+          if (current.kind === "processing") {
+            router.push("/checkout/success");
+            return;
+          }
+          if (current.kind === "fresh") {
+            resetCheckoutClientState("That checkout is no longer available. Start a fresh order below.");
+            return;
+          }
+        }
+        if (result.reason === "fresh") {
+          resetCheckoutClientState("That checkout is no longer available. Start a fresh order below.");
+          return;
+        }
         setAmountError(result.message);
         return;
       }
@@ -384,6 +490,68 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
     }
   };
 
+  const openSecureCheckout = async (fromRecovery = false) => {
+    if (requestControllerRef.current) return;
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    setCheckoutPending(true);
+    setCheckoutError(null);
+    if (fromRecovery) {
+      setRecoveryPending("resume");
+      setRecoveryError(null);
+    }
+    try {
+      const result = await requestCheckoutSession({ signal: controller.signal });
+      if (requestControllerRef.current !== controller) return;
+      if (result.kind === "failed") {
+        if (fromRecovery) setRecoveryError(result.message);
+        else setCheckoutError(result.message);
+        return;
+      }
+      if (result.kind === "ready") {
+        window.location.assign(result.checkoutUrl);
+      } else if (result.kind === "processing") {
+        router.push("/checkout/success");
+      } else if (result.kind === "fresh") {
+        resetCheckoutClientState("That checkout is no longer available. Start a fresh order below.");
+      }
+    } finally {
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setCheckoutPending(false);
+        setRecoveryPending(null);
+      }
+    }
+  };
+
+  const startNewOrder = async () => {
+    if (requestControllerRef.current) return;
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    setRecoveryPending("abandon");
+    setRecoveryError(null);
+    try {
+      const result = await abandonCurrentCheckout({ signal: controller.signal });
+      if (requestControllerRef.current !== controller) return;
+      if (result.kind === "abandoned" || result.kind === "fresh") {
+        resetCheckoutClientState(
+          result.kind === "fresh"
+            ? "That checkout is no longer available. Start a fresh order below."
+            : null,
+        );
+      } else if (result.kind === "processing") {
+        router.push("/checkout/success");
+      } else if (result.kind === "failed") {
+        setRecoveryError(result.message);
+      }
+    } finally {
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setRecoveryPending(null);
+      }
+    }
+  };
+
   if (!open) return null;
   return createPortal(
     <div className="checkout-modal-overlay" data-checkout-modal data-theme={theme}>
@@ -391,10 +559,23 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         <span className="paper-tape paper-tape-left" aria-hidden="true" />
         <span className="paper-tape paper-tape-right" aria-hidden="true" />
         <button aria-label="Close checkout preview" className="modal-close" data-initial-focus onClick={closeModal} type="button">×</button>
-        <ol aria-label="Checkout preview progress" className="step-progress">
+        {!hydrating && !recovery && <ol aria-label="Checkout preview progress" className="step-progress">
           {[1, 2, 3].map((number) => <li aria-current={step === number ? "step" : undefined} key={number}>{number}</li>)}
-        </ol>
-        {step === 1 && <CheckoutAmountStep
+        </ol>}
+        {hydrating && <section className="checkout-step recovery-step" aria-labelledby="checkout-modal-title">
+          <p className="step-kicker">One moment</p>
+          <h2 id="checkout-modal-title">Checking your checkout…</h2>
+        </section>}
+        {!hydrating && recovery && <CheckoutRecoveryStep
+          confirmStartOver={confirmStartOver}
+          error={recoveryError}
+          onCancelStartOver={() => setConfirmStartOver(false)}
+          onConfirmStartOver={() => { void startNewOrder(); }}
+          onResume={() => { void openSecureCheckout(true); }}
+          onStartOver={() => setConfirmStartOver(true)}
+          pending={recoveryPending}
+        />}
+        {!hydrating && !recovery && step === 1 && <CheckoutAmountStep
           amountCents={amountCents}
           customAmount={customAmount}
           error={amountError}
@@ -403,7 +584,7 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
           onPreset={choosePreset}
           pending={amountPending}
         />}
-        {step === 2 && <CheckoutPhotoStep
+        {!hydrating && !recovery && step === 2 && <CheckoutPhotoStep
           error={photoError}
           inputRef={inputRef}
           limits={limits}
@@ -417,23 +598,27 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
           photos={photos}
           setNote={setNote}
         />}
-        {step === 3 && amountCents !== null && <CheckoutReviewStep
+        {!hydrating && !recovery && step === 3 && amountCents !== null && <CheckoutReviewStep
           amountCents={amountCents}
           artistNote={confirmedNote}
-          onFinish={() => setNotice("Your choices are saved in this preview. Secure checkout is not connected yet.")}
+          checkoutError={checkoutError}
+          checkoutPending={checkoutPending}
+          onFinish={() => { void openSecureCheckout(); }}
           onRetryPreview={retryPhotoPreview}
           photos={photos}
         />}
-        <div className="modal-actions">
-          {step > 1 && <button className="back-button" disabled={photoPending} onClick={() => setStep(step - 1)} type="button">Back</button>}
+        {!hydrating && !recovery && <div className="modal-actions">
+          {step > 1 && <button className="back-button" disabled={photoPending || checkoutPending} onClick={() => {
+            setCheckoutError(null);
+            setStep(step - 1);
+          }} type="button">Back</button>}
           {step < 3 && <button
             className="continue-button"
             disabled={step === 1 ? amountCents === null || amountPending : photos.length === 0 || photoPending}
             onClick={() => { if (step === 1) void saveAmount(); else void continuePhotos(); }}
             type="button"
           >{step === 1 && amountPending ? "Saving your amount…" : step === 2 && photoPending ? "Uploading photos…" : "Continue"}</button>}
-        </div>
-        <p aria-live="polite" className="modal-notice">{notice}</p>
+        </div>}
       </div>
     </div>,
     document.body,

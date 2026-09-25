@@ -152,6 +152,9 @@ export const readCurrentCheckoutIntent = async (
     authorizeCheckoutIntent(request, credential),
     readMinimumAmountCents(request),
   ]);
+  if (intent.status === "expired") {
+    throw new StorefrontApiError(410, "INTENT_EXPIRED", { clearCookie: true });
+  }
   return safeState(request, intent, minimumAmountCents);
 };
 

@@ -5,12 +5,22 @@ import { photoPreviewUrl, type PhotoEntry } from "./CheckoutPhotoStep";
 type Props = {
   amountCents: number;
   artistNote: string;
+  checkoutError: string | null;
+  checkoutPending: boolean;
   onFinish: () => void;
   onRetryPreview: (position: number) => void;
   photos: PhotoEntry[];
 };
 
-export function CheckoutReviewStep({ amountCents, artistNote, onFinish, onRetryPreview, photos }: Props) {
+export function CheckoutReviewStep({
+  amountCents,
+  artistNote,
+  checkoutError,
+  checkoutPending,
+  onFinish,
+  onRetryPreview,
+  photos,
+}: Props) {
   return (
     <section className="checkout-step review-step" aria-labelledby="checkout-modal-title">
       <p className="step-kicker">Step 3 of 3 · One last look</p>
@@ -41,9 +51,18 @@ export function CheckoutReviewStep({ amountCents, artistNote, onFinish, onRetryP
         <strong>Private note for the artist</strong>
         <p>{artistNote}</p>
       </div>}
-      <button className="secure-checkout-button" onClick={onFinish} type="button">
-        Continue to Secure Checkout
+      <button
+        aria-describedby={checkoutError ? "checkout-session-error" : undefined}
+        className="secure-checkout-button"
+        disabled={checkoutPending}
+        onClick={onFinish}
+        type="button"
+      >
+        {checkoutPending ? "Opening secure checkout…" : "Continue to Secure Checkout"}
       </button>
+      <p className="field-error" id="checkout-session-error" role="alert">
+        {checkoutError}
+      </p>
     </section>
   );
 }

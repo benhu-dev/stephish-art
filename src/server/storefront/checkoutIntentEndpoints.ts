@@ -6,6 +6,10 @@ import {
   serializeCheckoutIntentCookie,
   type CheckoutIntentCredential,
 } from "./checkoutIntentCookie";
+import {
+  abandonStripeCheckoutSession,
+  type CheckoutAbandonDependencies,
+} from "./checkoutAbandonService";
 import { createOrResumeStripeCheckoutSession } from "./checkoutSessionService";
 import {
   createOrResumeCheckoutIntent,
@@ -236,6 +240,24 @@ const checkoutSessionHandler = async (request: PayloadRequest) => {
   }
 };
 
+export const abandonCheckoutIntentHandler = async (
+  request: PayloadRequest,
+  dependencies: CheckoutAbandonDependencies = {},
+) => {
+  try {
+    requireSameOrigin(request);
+    requireNoQueryString(request);
+    parseEmptyObjectRequest(await readStorefrontJson(request));
+    const credential = readRequiredCredential(request);
+    await abandonStripeCheckoutSession({ credential, dependencies, request });
+    const headers = noStoreHeaders();
+    headers.set("Set-Cookie", clearCheckoutIntentCookie(isProduction()));
+    return new Response(null, { headers, status: 204 });
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
 export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
   {
     handler: createOrResumeHandler,
@@ -276,5 +298,10 @@ export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
     handler: checkoutSessionHandler,
     method: "post",
     path: "/storefront/checkout-intents/current/checkout-session",
+  },
+  {
+    handler: abandonCheckoutIntentHandler,
+    method: "post",
+    path: "/storefront/checkout-intents/current/abandon",
   },
 ];

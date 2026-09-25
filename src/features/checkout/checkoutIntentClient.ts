@@ -15,10 +15,13 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 type SubmitOptions = { fetchImpl?: FetchLike; signal?: AbortSignal };
 type SubmissionResult =
   | { ok: true; value: SafeIntentState & { created: boolean } }
-  | { message: string; ok: false };
+  | { message: string; ok: false; reason?: "conflict" | "fresh" };
 
 export type SafeUpload = { id: number; position: number; mimeType: string | null; sizeBytes: number | null };
 export type SafeIntentState = { amountCents: number; artistNote: string; limits: CheckoutLimits; uploads: SafeUpload[] };
+export type SafeCurrentIntentState = SafeIntentState & {
+  status: "checkout_created" | "checkout_pending" | "completed" | "draft" | "expired";
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,7 +80,7 @@ const hasValidUploads = (value: unknown, limits: CheckoutLimits): value is SafeU
       && isPositiveInteger(upload.position) && upload.position <= limits.maxFiles;
   }) && new Set(value.map((upload: SafeUpload) => upload.position)).size === value.length;
 
-export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
+export const parseSafeCurrentResponse = (value: unknown): SafeCurrentIntentState | null => {
   if (!isRecord(value)) return null;
   const baseKeys = ["amountCents", "artistNote", "expiresAt", "limits", "status", "uploads"];
   const snapshotKeys = [...baseKeys, "shippingAmountCents", "totalAmountCents"];
@@ -85,7 +88,7 @@ export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
   const limits = parseLimits(value.limits);
   if (
     !limits
-    || value.status !== "draft"
+    || !["checkout_created", "checkout_pending", "completed", "draft", "expired"].includes(String(value.status))
     || !isPositiveInteger(value.amountCents)
     || value.amountCents < limits.minimumAmountCents
     || typeof value.artistNote !== "string"
@@ -105,7 +108,29 @@ export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
       || value.totalAmountCents !== value.amountCents + value.shippingAmountCents
     ) return null;
   }
-  return { amountCents: value.amountCents, artistNote: value.artistNote, limits, uploads: value.uploads };
+  if (
+    value.status !== "draft" &&
+    value.status !== "expired" &&
+    !hasExactKeys(value, snapshotKeys)
+  ) return null;
+  return {
+    amountCents: value.amountCents,
+    artistNote: value.artistNote,
+    limits,
+    status: value.status as SafeCurrentIntentState["status"],
+    uploads: value.uploads,
+  };
+};
+
+export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
+  const parsed = parseSafeCurrentResponse(value);
+  if (!parsed || parsed.status !== "draft") return null;
+  return {
+    amountCents: parsed.amountCents,
+    artistNote: parsed.artistNote,
+    limits: parsed.limits,
+    uploads: parsed.uploads,
+  };
 };
 
 const errorMessage = (status: number) => {
@@ -142,7 +167,12 @@ export async function submitCheckoutAmount(
       ...(signal ? { signal } : {}),
     });
     if (response.status !== 200 && response.status !== 201) {
-      return { message: errorMessage(response.status), ok: false };
+      return {
+        message: errorMessage(response.status),
+        ok: false,
+        ...(response.status === 409 ? { reason: "conflict" as const } : {}),
+        ...([401, 410].includes(response.status) ? { reason: "fresh" as const } : {}),
+      };
     }
     const value = parseSafeResponse(await response.json());
     return value ? { ok: true, value: { ...value, created: response.status === 201 } } : { message: GENERIC_ERROR, ok: false };

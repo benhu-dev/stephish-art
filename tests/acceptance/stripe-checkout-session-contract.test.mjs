@@ -14,7 +14,9 @@ const input = {
   baseURL: "https://shop.example",
   expiresAtEpochSeconds: 1_800_000_000,
   intentId: 42,
+  payment_method_types: ["klarna", "link", "us_bank_account"],
   shippingAmountCents: 100,
+  wallet_options: { link: { display: "auto" } },
 };
 
 test("Stripe Checkout parameters are exact, server-owned, and US-only", () => {
@@ -52,9 +54,19 @@ test("Stripe Checkout parameters are exact, server-owned, and US-only", () => {
       },
     ],
     success_url: "https://shop.example/checkout/success",
+    wallet_options: { link: { display: "never" } },
   });
 
-  const serialized = JSON.stringify(buildStripeCheckoutSessionParams(input));
+  const params = buildStripeCheckoutSessionParams(input);
+  assert.deepEqual(params.payment_method_types, ["card"]);
+  assert.deepEqual(params.wallet_options, { link: { display: "never" } });
+  const serialized = JSON.stringify(params);
+  assert.equal(
+    /affirm|afterpay|cashapp|cash_app|klarna|us_bank|bank_debit|bank_transfer|bnpl/i.test(
+      serialized,
+    ),
+    false,
+  );
   assert.equal(/promotion|setup_future_usage|email|filename|storage/i.test(serialized), false);
   assert.equal(serialized.includes("{CHECKOUT_SESSION_ID}"), false);
   assert.equal(serialized.includes("session_id"), false);

@@ -78,6 +78,7 @@ export const buildStripeCheckoutSessionParams = ({
     },
   ],
   success_url: `${baseURL}/checkout/success`,
+  wallet_options: { link: { display: "never" } },
 });
 
 export const validateStripeCheckoutSession = (

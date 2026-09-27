@@ -17,6 +17,10 @@ import {
   readMinimumAmountCents,
   saveCheckoutIntentArtistNote,
 } from "./checkoutIntentService";
+import {
+  readCheckoutRecovery,
+  type CheckoutRecoveryDependencies,
+} from "./checkoutRecoveryService";
 import { readCheckoutStatus } from "./checkoutStatusService";
 import {
   deleteCheckoutIntentFile,
@@ -113,6 +117,43 @@ const currentHandler = async (request: PayloadRequest) => {
       200,
     );
   } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
+const emptyRecoveryResponse = (clearCookie: boolean) => {
+  const headers = noStoreHeaders();
+  if (clearCookie) {
+    headers.set("Set-Cookie", clearCheckoutIntentCookie(isProduction()));
+  }
+  return new Response(null, { headers, status: 204 });
+};
+
+export const checkoutRecoveryHandler = async (
+  request: PayloadRequest,
+  dependencies: CheckoutRecoveryDependencies = {},
+) => {
+  try {
+    requireNoQueryString(request);
+    const parsed = parseCheckoutIntentCookie(request.headers.get("cookie"));
+    if (parsed.kind === "missing") return emptyRecoveryResponse(false);
+    if (parsed.kind === "malformed") return emptyRecoveryResponse(true);
+
+    const recovery = await readCheckoutRecovery({
+      credential: parsed.credential,
+      dependencies,
+      request,
+    });
+    return recovery
+      ? jsonResponse(recovery, 200)
+      : emptyRecoveryResponse(true);
+  } catch (error) {
+    if (
+      error instanceof StorefrontApiError &&
+      (error.status === 401 || error.status === 410)
+    ) {
+      return emptyRecoveryResponse(true);
+    }
     return errorResponse(request, error);
   }
 };
@@ -268,6 +309,11 @@ export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
     handler: currentHandler,
     method: "get",
     path: "/storefront/checkout-intents/current",
+  },
+  {
+    handler: checkoutRecoveryHandler,
+    method: "get",
+    path: "/storefront/checkout-intents/current/recovery",
   },
   {
     handler: artistNoteHandler,

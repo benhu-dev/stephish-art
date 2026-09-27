@@ -4,6 +4,7 @@ import {
 } from "./checkoutIntentClient";
 
 const CURRENT_ENDPOINT = "/api/storefront/checkout-intents/current";
+const RECOVERY_ENDPOINT = `${CURRENT_ENDPOINT}/recovery`;
 const ABANDON_ENDPOINT = `${CURRENT_ENDPOINT}/abandon`;
 const GENERIC_ERROR = "We couldn't update this checkout. Please try again.";
 
@@ -29,14 +30,14 @@ export async function readCurrentCheckoutState(
   { fetchImpl = globalThis.fetch, signal }: Options = {},
 ): Promise<CurrentCheckoutResult> {
   try {
-    const response = await fetchImpl(CURRENT_ENDPOINT, {
+    const response = await fetchImpl(RECOVERY_ENDPOINT, {
       cache: "no-store",
       credentials: "same-origin",
       headers: { Accept: "application/json", "Cache-Control": "no-store" },
       method: "GET",
       ...(signal ? { signal } : {}),
     });
-    if (response.status === 401 || response.status === 410) return { kind: "fresh" };
+    if (response.status === 204) return { kind: "fresh" };
     if (response.status !== 200) return { kind: "failed" };
     const state = parseSafeCurrentResponse(await response.json());
     if (!state) return { kind: "failed" };

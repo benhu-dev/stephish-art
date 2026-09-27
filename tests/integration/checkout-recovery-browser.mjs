@@ -10,6 +10,8 @@ const abandonRequests = [];
 const externalNavigations = [];
 const heldSessionRequests = [];
 const browserLogs = [];
+const recoveryStatuses = [];
+let recoveryMode = "empty";
 
 const safeState = (status) => ({
   amountCents: 900,
@@ -44,11 +46,11 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
   pendingCommands.set(id, { reject, resolve });
   socket.send(JSON.stringify({ id, method, params }));
 });
-const fulfill = (requestId, responseCode, body) => send("Fetch.fulfillRequest", {
+const fulfill = (requestId, responseCode, body, responseHeaders = jsonHeaders) => send("Fetch.fulfillRequest", {
   ...(body === undefined ? {} : { body: Buffer.from(JSON.stringify(body)).toString("base64") }),
   requestId,
   responseCode,
-  responseHeaders: jsonHeaders,
+  responseHeaders,
 });
 
 socket.addEventListener("message", ({ data }) => {
@@ -62,9 +64,17 @@ socket.addEventListener("message", ({ data }) => {
     if (url.hostname === "checkout.stripe.com") {
       externalNavigations.push(request.url);
       void send("Fetch.failRequest", { errorReason: "Aborted", requestId });
-    } else if (url.pathname === "/api/storefront/checkout-intents/current" && request.method === "GET") {
+    } else if (url.pathname === "/api/storefront/checkout-intents/current/recovery" && request.method === "GET") {
       currentRequests.push(request);
-      void fulfill(requestId, 200, safeState("checkout_created"));
+      if (recoveryMode === "empty") {
+        recoveryStatuses.push(204);
+        void fulfill(requestId, 204, undefined, [
+          { name: "Cache-Control", value: "no-store" },
+        ]);
+      } else {
+        recoveryStatuses.push(200);
+        void fulfill(requestId, 200, safeState("checkout_created"));
+      }
     } else if (url.pathname.endsWith("/checkout-session")) {
       sessionRequests.push(request);
       heldSessionRequests.push(requestId);
@@ -111,14 +121,14 @@ const loadStorefront = async () => {
     "storefront",
   );
 };
-const openModal = async () => {
+const openModal = async (title = "Your checkout is ready") => {
   await evaluate("window.scrollTo(0, document.documentElement.scrollHeight - innerHeight)");
   await delay(450);
   await waitFor('!document.querySelector("[data-final-cta] button").disabled', "final CTA");
   await evaluate('document.querySelector("[data-final-cta] button").click()');
   await waitFor(
-    'document.querySelector("#checkout-modal-title")?.textContent === "Your checkout is ready"',
-    "recovery view",
+    `document.querySelector("#checkout-modal-title")?.textContent === ${JSON.stringify(title)}`,
+    `${title} view`,
   );
 };
 
@@ -127,15 +137,45 @@ try {
   await send("Runtime.enable");
   await send("Fetch.enable", { patterns: [
     { requestStage: "Request", urlPattern: "*/api/storefront/checkout-intents" },
-    { requestStage: "Request", urlPattern: "*/api/storefront/checkout-intents/current" },
+    { requestStage: "Request", urlPattern: "*/api/storefront/checkout-intents/current/recovery" },
     { requestStage: "Request", urlPattern: "*/api/storefront/checkout-intents/current/checkout-session" },
     { requestStage: "Request", urlPattern: "*/api/storefront/checkout-intents/current/abandon" },
     { requestStage: "Request", urlPattern: "https://checkout.stripe.com/*" },
   ] });
 
   await loadStorefront();
-  await openModal();
+  await openModal("Choose your amount");
   assert.equal(currentRequests.length, 1);
+  assert.equal(await evaluate('document.querySelector(".amount-custom") !== null'), true);
+  await evaluate('document.querySelector(".amount-preset").click()');
+  await evaluate('document.querySelector(".continue-button").click()');
+  await waitFor(
+    'document.querySelector("#checkout-modal-title")?.textContent === "Add your photos"',
+    "new Intent after empty recovery",
+  );
+  assert.equal(amountRequests.length, 1);
+
+  await send("Page.navigate", { url: `${baseURL}/checkout/success` });
+  await waitFor('document.readyState === "complete"', "post-payment page");
+  await loadStorefront();
+  await openModal("Choose your amount");
+  assert.equal(currentRequests.length, 2);
+  assert.deepEqual(recoveryStatuses, [204, 204]);
+  assert.equal(browserLogs.some((entry) => /401|unauthorized/i.test(entry)), false);
+  assert.equal(await evaluate(`(() => {
+    const values = [...Object.values(localStorage), ...Object.values(sessionStorage)];
+    return values.some((value) => /checkout\.stripe\.com|cs_test|intentId/i.test(String(value)));
+  })()`), false);
+  assert.equal(await evaluate(`(() => {
+    const exposed = document.documentElement.outerHTML + location.href;
+    return /checkout\.stripe\.com|cs_test|session_id|intentId=|stephish_checkout/i.test(exposed);
+  })()`), false);
+
+  recoveryMode = "resumable";
+  amountRequests.length = 0;
+  await loadStorefront();
+  await openModal();
+  assert.equal(currentRequests.length, 3);
   assert.equal(await evaluate('document.querySelector(".amount-custom") === null'), true);
 
   await evaluate(`(() => {
@@ -196,6 +236,9 @@ try {
   assert.equal(browserLogs.some((entry) => /checkout\.stripe\.com|cs_test/i.test(entry)), false);
 
   console.log("CHECKOUT_RECOVERY_BROWSER_HYDRATION=PASS");
+  console.log("CHECKOUT_OPTIONAL_RECOVERY_204_NO_401=PASS");
+  console.log("CHECKOUT_OPTIONAL_RECOVERY_NEW_INTENT=PASS");
+  console.log("CHECKOUT_RECOVERY_BROWSER_PRIVACY=PASS");
   console.log("CHECKOUT_RECOVERY_BROWSER_RESUME_SINGLE_FLIGHT=PASS");
   console.log("CHECKOUT_RECOVERY_BROWSER_INLINE_CONFIRMATION_RETRY=PASS");
   console.log("CHECKOUT_RECOVERY_BROWSER_RESET_THEN_NEW_INTENT=PASS");

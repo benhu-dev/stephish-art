@@ -37,6 +37,10 @@ test("root storefront endpoints have the exact route and method contract", () =>
       { method: "post", path: "/storefront/checkout-intents" },
       { method: "get", path: "/storefront/checkout-intents/current" },
       {
+        method: "get",
+        path: "/storefront/checkout-intents/current/recovery",
+      },
+      {
         method: "put",
         path: "/storefront/checkout-intents/current/artist-note",
       },

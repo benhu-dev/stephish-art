@@ -45,6 +45,30 @@ test("abandon uses the exact protected empty-object contract", async () => {
   });
 });
 
+test("passive recovery uses the optional endpoint and treats 204 as fresh", async () => {
+  const calls = [];
+  const result = await readCurrentCheckoutState({
+    fetchImpl: async (...args) => {
+      calls.push(args);
+      return new Response(null, {
+        headers: { "Cache-Control": "no-store" },
+        status: 204,
+      });
+    },
+  });
+  assert.deepEqual(result, { kind: "fresh" });
+  assert.equal(
+    calls[0][0],
+    "/api/storefront/checkout-intents/current/recovery",
+  );
+  assert.deepEqual(calls[0][1], {
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { Accept: "application/json", "Cache-Control": "no-store" },
+    method: "GET",
+  });
+});
+
 test("current checkout hydration distinguishes draft, recovery, and fresh state", async () => {
   for (const status of ["checkout_pending", "checkout_created"]) {
     assert.deepEqual(await readCurrentCheckoutState({
@@ -56,11 +80,9 @@ test("current checkout hydration distinguishes draft, recovery, and fresh state"
   });
   assert.equal(draft.kind, "draft");
   assert.equal(draft.state.amountCents, 900);
-  for (const status of [401, 410]) {
-    assert.deepEqual(await readCurrentCheckoutState({
-      fetchImpl: async () => Response.json({}, { status }),
-    }), { kind: "fresh" });
-  }
+  assert.deepEqual(await readCurrentCheckoutState({
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  }), { kind: "fresh" });
 });
 
 test("malformed hydration and private fields never enter recovery state", async () => {
@@ -75,6 +97,14 @@ test("malformed hydration and private fields never enter recovery state", async 
   assert.deepEqual(await readCurrentCheckoutState({
     fetchImpl: async () => Response.json(safeState("completed"), { status: 200 }),
   }), { kind: "processing" });
+});
+
+test("passive recovery abort is silent and distinct from failure", async () => {
+  assert.deepEqual(await readCurrentCheckoutState({
+    fetchImpl: async () => {
+      throw new DOMException("aborted", "AbortError");
+    },
+  }), { kind: "aborted" });
 });
 
 test("abandon failure kinds are safe, explicit, and retryable", async () => {

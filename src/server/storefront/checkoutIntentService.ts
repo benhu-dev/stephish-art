@@ -61,6 +61,11 @@ const safeState = async (
     uploads: await readIntentUploads(request, intent.id),
   });
 
+export const readAuthorizedCheckoutIntentState = async (
+  request: PayloadRequest,
+  intent: Parameters<typeof safeState>[1],
+) => safeState(request, intent, await readMinimumAmountCents(request));
+
 export const createCheckoutIntent = async (
   request: PayloadRequest,
   amountCents: number,
@@ -148,14 +153,11 @@ export const readCurrentCheckoutIntent = async (
   request: PayloadRequest,
   credential: CheckoutIntentCredential,
 ) => {
-  const [intent, minimumAmountCents] = await Promise.all([
-    authorizeCheckoutIntent(request, credential),
-    readMinimumAmountCents(request),
-  ]);
+  const intent = await authorizeCheckoutIntent(request, credential);
   if (intent.status === "expired") {
     throw new StorefrontApiError(410, "INTENT_EXPIRED", { clearCookie: true });
   }
-  return safeState(request, intent, minimumAmountCents);
+  return readAuthorizedCheckoutIntentState(request, intent);
 };
 
 export const saveCheckoutIntentArtistNote = async ({

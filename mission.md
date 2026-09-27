@@ -1,187 +1,103 @@
-# Phase 2 — Unit 2.14.2: Card-Only Checkout Without Link
+# Phase 2, Unit 2.14.3 — Optional Checkout Recovery Probe
 
 ## Goal
 
-Remove Stripe Link and the Link-provided Bank and Klarna options from newly created Stripe-hosted Checkout Sessions.
+Stop the passive checkout recovery check from producing an expected `401 Unauthorized` when there is no resumable checkout.
 
-Continue supporting:
+“No checkout to recover” is a normal empty result. It must not appear as an application error, affect the Amount step, or produce a red 401 request in the browser console.
 
-- Standard credit and debit cards
-- Apple Pay when supported
-- Google Pay when supported
+Keep this Unit small and focused.
 
-Do not redesign Checkout or change any monetary, shipping, fulfillment, or recovery behavior.
+## Required behavior
 
-## Baseline
+Add a dedicated optional recovery contract at:
 
-- Units 2.14 and 2.14.1 are committed at the current HEAD.
-- The working tree must be clean except for the intentional `mission.md` modification.
-- Stripe remains in Sandbox/Test mode.
-- `.env.local` must not be printed or modified.
+`GET /api/storefront/checkout-intents/current/recovery`
 
-Record starting HEAD and concise Git status. Stop on unrelated changes.
+Update the existing checkout recovery client to use this endpoint instead of using a strict protected endpoint as a passive probe.
 
-Inspect only the Stripe Checkout gateway/session parameter builder and its directly related focused tests.
+### Response contract
 
-## Stripe Session Contract
+- `200` — a resumable checkout exists.
+  - Preserve the existing safe recovery response shape.
+  - Do not expose Intent IDs, Stripe IDs, tokens, Storage data, PII, or internal state.
 
-For every newly created Checkout Session, preserve the existing explicit card configuration and add:
+- `204 No Content` — no resumable checkout exists.
+  - This includes:
+    - no checkout cookie;
+    - malformed, unknown, expired, or stale credentials;
+    - missing Intent;
+    - completed, expired, or abandoned Intent;
+    - no reusable/open Checkout Session.
+  - Return an empty body.
+  - Apply `Cache-Control: no-store`.
+  - Clear a stale checkout cookie when appropriate.
 
-```ts
-wallet_options: {
-  link: {
-    display: 'never',
-  },
-}
-```
+- `500` or `503` — an authenticated recovery candidate exists, but the database, Stripe lookup, or another required dependency genuinely fails.
+  - Return only the existing generic safe error contract.
 
-The final relevant contract must include:
+### Browser behavior
 
-```ts
-payment_method_types: ['card']
-```
+- Treat `204` as a successful empty result.
+- Do not throw, log, render, or retain an error for `204`.
+- Reset stale recovery state and leave the customer on a clean Amount step.
+- The customer must be able to create a new Checkout Intent normally.
+- Abort and unmount cancellation must not create console errors or late state updates.
+- Genuine network or `5xx` failures may use the existing safe retry/error behavior.
 
-and:
+## Preserve existing security contracts
 
-```ts
-wallet_options: {
-  link: {
-    display: 'never',
-  },
-}
-```
+- Do not weaken the strict authentication behavior of existing protected `/current`, upload, preview, status, checkout-session, abandon, or webhook endpoints.
+- Do not accept identifiers or credentials from query parameters, request bodies, or custom headers.
+- Do not create a Stripe Checkout Session during recovery.
+- Do not create Customers or Orders.
+- Preserve existing same-origin, no-store, HttpOnly-cookie, Stripe Test-mode, and safe-response rules.
+- Preserve any existing safe reconciliation needed to determine whether a Session is resumable.
 
-This must prevent newly created Sessions from displaying:
+## Focused acceptance coverage
 
-- Link
-- Link Instant Bank Payment
-- Link promotional bank cashback
-- Klarna through Link
-- Link payment-information saving
+Add only focused tests proving:
 
-Do not disable standard card wallets. Apple Pay and Google Pay may still appear when Stripe determines the browser, device, domain, and customer are eligible.
-
-Do not add Klarna, Affirm, Afterpay, Cash App, ACH, bank debit, bank transfer, or any other payment method.
-
-## Preserve Existing Checkout Behavior
-
-Do not change:
-
-- USD
-- Customer creation
-- Amount or minimum validation
-- Fixed shipping fee
-- US-only shipping address collection
-- Success or cancel URLs
-- Identifier-free redirects
-- Idempotency
-- Checkout reservation/finalization
-- Recovery and abandonment
-- Webhook fulfillment
-- Saved-payment settings
-- Tax, invoice, promotion-code, or discount settings
-- Session expiration
-- Metadata
-- Logging or safe responses
-
-Existing Stripe Sessions are immutable and may continue showing Link. Only newly created Sessions must use the new configuration.
-
-## Focused Verification
-
-Add or update focused tests proving:
-
-1. Exact `payment_method_types: ['card']`.
-2. Exact `wallet_options.link.display: 'never'`.
-3. No Link, Klarna, bank, BNPL, or alternative payment type is requested.
-4. All existing amount, shipping, address, Customer, URL, idempotency, metadata, tax, invoice, discount, and saved-method parameters remain unchanged.
-5. Reused Sessions are not recreated.
-6. No payment configuration is accepted from the browser.
-7. No secret, Session ID, URL, or customer data is logged or returned beyond the existing safe response.
-
-Run one isolated Stripe Sandbox lifecycle:
-
-- Create a unique synthetic Intent using the existing test harness.
-- Create one new Checkout Session.
-- Retrieve it from Stripe.
-- Confirm Test mode, `payment_method_types` contains only `card`, and the Session was created with Link disabled.
-- Confirm the existing subtotal, fixed shipping, total, Customer creation, and US shipping behavior are unchanged.
-- Do not complete payment.
-- Expire the synthetic Session.
-- Remove only task-created database and Storage fixtures.
-- Preserve all user-owned data.
+1. No cookie returns `204`, an empty body, and no-store.
+2. Invalid, unknown, expired, completed, and abandoned checkout credentials produce the same generic `204`.
+3. A genuinely resumable checkout returns the unchanged safe `200` response.
+4. A real dependency failure returns a generic `500` or `503`, not `204`.
+5. The browser recovery client treats `204` as a normal empty result.
+6. A fresh visit and a post-payment visit produce no recovery-related `401` in the browser console.
+7. After an empty recovery result, the Amount step can create a new Intent.
+8. Existing strict protected endpoints still return their current authentication errors.
+9. No identifiers, secrets, PII, Stripe data, or Storage details enter the DOM, URL, logs, or browser storage.
 
 ## Validation
 
 Run only:
 
-- Focused Stripe Checkout gateway/session tests
-- Directly affected checkout-session regression tests
-- One isolated Stripe Sandbox create/retrieve/expire lifecycle
-- TypeScript
-- ESLint
-- One production build
-- `git diff --check`
+- focused recovery endpoint/client tests;
+- one focused mocked or production-browser recovery check;
+- TypeScript;
+- ESLint for changed files, or the existing lint command if required;
+- one production build;
+- `git diff --check`.
 
-Do not run:
+Do not run unrelated Storage, upload, webhook, scene, viewport, full Stripe lifecycle, or full acceptance suites unless a focused regression fails and requires investigation.
 
-- Real payment
-- Stripe CLI webhook delivery
-- Full acceptance suite
-- Webhook concurrency/replay matrix
-- Storage or preview lifecycle
-- Scene or full viewport regression
-- GraphQL/access matrix
-- Migration generation
-- Dependency audit
+## Out of scope
 
-## Manual Acceptance
+Do not add:
 
-Report that manual verification requires a newly created order.
+- expired Intent cleanup;
+- database or Storage deletion;
+- scheduled jobs or cron;
+- schemas or migrations;
+- dependencies or environment variables;
+- payment-method, shipping, tax, tracking, email, webhook, Order, Customer, upload, preview, narrative, or unrelated UI changes.
 
-Resuming a Checkout Session created before this Unit may still show Link.
+Cleanup will be handled in Unit 2.15.
 
-For a new Sandbox order, Stripe Checkout should show:
+## Repository rules
 
-- Card entry
-- Apple Pay when eligible
-- Google Pay when eligible
-- Existing shipping address and fixed shipping charge
-
-It must not show:
-
-- Link
-- Bank cashback
-- Klarna
-
-## Excluded Work
-
-Do not implement:
-
-- Dashboard-wide payment-method changes
-- Dynamic shipping
-- Tracking
-- Tax
-- Email
-- Intent cleanup
-- Real payment
-- Webhook changes
-- Schema or migrations
-- Dependencies
-- Environment changes
-- Frontend redesign
-- Unit 2.15
-
-Do not modify `AGENTS.md`. Do not commit or push.
-
-## Completion Report
-
-Report:
-
-- `COMPLETE` or `BLOCKED`
-- Starting and ending HEAD
-- Final Stripe payment-method contract
-- Focused test and Sandbox lifecycle evidence
-- Confirmation that shipping and existing Checkout behavior were unchanged
-- Starting/final database and Storage counts
-- Files changed and final Git status
-- Confirmation that no real payment, webhook, cleanup, shipping, tracking, tax, email, schema, migration, dependency, environment, Dashboard, or unrelated UI change was introduced
+- Preserve user-owned changes.
+- Do not modify `.env.local`.
+- Do not commit or push.
+- Stop all task-created servers and browser processes.
+- Report starting and ending HEAD, changed files, focused validation results, and final repository status.

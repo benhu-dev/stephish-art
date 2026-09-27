@@ -15,6 +15,7 @@ export type SafeStripeCheckoutSession = {
   expiresAt: string;
   expiresAtEpochSeconds: number;
   id: string;
+  paymentStatus: "no_payment_required" | "paid" | "unpaid";
   status: "complete" | "expired" | "open";
   url: string | null;
 };
@@ -84,7 +85,12 @@ export const buildStripeCheckoutSessionParams = ({
 export const validateStripeCheckoutSession = (
   value: Pick<
     Stripe.Checkout.Session,
-    "expires_at" | "id" | "livemode" | "status" | "url"
+    | "expires_at"
+    | "id"
+    | "livemode"
+    | "payment_status"
+    | "status"
+    | "url"
   >,
 ): SafeStripeCheckoutSession => {
   if (
@@ -92,6 +98,9 @@ export const validateStripeCheckoutSession = (
     typeof value.id !== "string" ||
     !value.id.startsWith("cs_test_") ||
     !Number.isSafeInteger(value.expires_at) ||
+    !["no_payment_required", "paid", "unpaid"].includes(
+      String(value.payment_status),
+    ) ||
     !["complete", "expired", "open"].includes(String(value.status))
   ) {
     throw new Error("INVALID_STRIPE_CHECKOUT_SESSION");
@@ -119,6 +128,8 @@ export const validateStripeCheckoutSession = (
     expiresAt: new Date(value.expires_at * 1000).toISOString(),
     expiresAtEpochSeconds: value.expires_at,
     id: value.id,
+    paymentStatus:
+      value.payment_status as SafeStripeCheckoutSession["paymentStatus"],
     status: value.status as SafeStripeCheckoutSession["status"],
     url: value.url,
   };

@@ -72,6 +72,36 @@ States shipping, fixed configured shipping, Customer creation enabled, and
 automatic tax, discounts, invoicing, and future payment-method saving disabled.
 There are still no success/cancel pages; a redirect is never proof of payment.
 
+## Automatic checkout cleanup
+
+Vercel Cron calls `/api/internal/cron/checkout-cleanup` once daily at **10:00 UTC**.
+Configure `CRON_SECRET` as a random, server-only Vercel environment variable of
+at least 32 characters. Vercel sends it as an exact Bearer credential; missing or
+invalid credentials fail closed. Inspect aggregate outcomes and retry counts in
+the deployment's Vercel Cron logs. Logs and responses omit customer data,
+filenames, object keys, Stripe URLs, and credentials.
+
+The cleanup engine uses each Checkout Intent's `deleteAfter` deadline, processes
+at most 25 candidates, and expires an open unpaid Stripe Test Checkout Session
+before deletion. It locks and revalidates database ownership, deletes private
+Storage objects first, then upload rows, and the Checkout Intent last. Completed
+Intents, Orders, paid-order uploads and images, paid or uncertain Stripe Sessions,
+and active reservations are excluded. Missing Storage objects are safe to retry;
+Storage failures retain database rows for a later run.
+
+Preview one bounded batch without Stripe expiration, Storage deletion, or
+database mutation:
+
+```sh
+npm run checkout:cleanup
+```
+
+Execute one bounded batch manually:
+
+```sh
+npm run checkout:cleanup -- --execute
+```
+
 ## Scene and timing
 
 The machine, camera, and park stay fixed in a sticky viewport across a 360svh scroll container. Scroll down to insert a coin and print a postcard; scroll up to reverse. Anime.js controls the timeline using its [scroll synchronization](https://animejs.com/documentation/events/onscroll/scrollobserver-synchronisation-modes/).

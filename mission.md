@@ -1,103 +1,177 @@
-# Phase 2, Unit 2.14.3 — Optional Checkout Recovery Probe
+# Phase 2, Unit 2.15 — Automatic Checkout Cleanup
 
 ## Goal
 
-Stop the passive checkout recovery check from producing an expected `401 Unauthorized` when there is no resumable checkout.
+Implement safe cleanup for unpaid Checkout Intents whose retention period has ended, including the reusable cleanup service, a dry-run CLI, a protected Vercel Cron endpoint, and a daily production schedule.
 
-“No checkout to recover” is a normal empty result. It must not appear as an application error, affect the Amount step, or produce a red 401 request in the browser console.
+Eligible private Storage objects, Order Upload rows, and Checkout Intents must be deleted without risking paid orders, active Stripe Sessions, or user-owned data.
 
-Keep this Unit small and focused.
+## Eligibility
 
-## Required behavior
+An Intent is eligible only when:
 
-Add a dedicated optional recovery contract at:
+- `deleteAfter` is at or before the current time;
+- it is not completed;
+- it has no Order;
+- none of its uploads belong to an Order;
+- it is not in a transient reservation or finalization state;
+- any Stripe Checkout Session is authoritatively confirmed unpaid and no longer payable.
 
-`GET /api/storefront/checkout-intents/current/recovery`
+Use the existing `deleteAfter` field as the only retention source of truth.
 
-Update the existing checkout recovery client to use this endpoint instead of using a strict protected endpoint as a passive probe.
+## Stripe safety
 
-### Response contract
+For a candidate with a persisted Checkout Session:
 
-- `200` — a resumable checkout exists.
-  - Preserve the existing safe recovery response shape.
-  - Do not expose Intent IDs, Stripe IDs, tokens, Storage data, PII, or internal state.
+- Retrieve its latest Stripe Test-mode state outside database transactions.
+- Skip paid, complete, uncertain, or potentially fulfillable Sessions.
+- Expire an open unpaid Session before deleting anything.
+- If Stripe is unavailable or expiration cannot be confirmed, skip the candidate for a later retry.
+- Never create a Session, Customer, Order, payment, or refund.
 
-- `204 No Content` — no resumable checkout exists.
-  - This includes:
-    - no checkout cookie;
-    - malformed, unknown, expired, or stale credentials;
-    - missing Intent;
-    - completed, expired, or abandoned Intent;
-    - no reusable/open Checkout Session.
-  - Return an empty body.
-  - Apply `Cache-Control: no-store`.
-  - Clear a stale checkout cookie when appropriate.
+Draft Intents without a Stripe Session require no Stripe call.
 
-- `500` or `503` — an authenticated recovery candidate exists, but the database, Stripe lookup, or another required dependency genuinely fails.
-  - Return only the existing generic safe error contract.
+## Deletion order
 
-### Browser behavior
+Process no more than 25 candidates per run.
 
-- Treat `204` as a successful empty result.
-- Do not throw, log, render, or retain an error for `204`.
-- Reset stale recovery state and leave the customer on a clean Amount step.
-- The customer must be able to create a new Checkout Intent normally.
-- Abort and unmount cancellation must not create console errors or late state updates.
-- Genuine network or `5xx` failures may use the existing safe retry/error behavior.
+For each candidate:
 
-## Preserve existing security contracts
+1. Resolve Stripe state when required.
+2. Lock and revalidate the Intent, retention deadline, status, Order absence, and upload ownership.
+3. Delete its private Storage objects through the existing server-side abstraction.
+4. Treat an already-missing object as successful.
+5. If Storage deletion fails, retain the database rows for retry.
+6. Lock and revalidate again.
+7. Delete the related Order Upload rows.
+8. Delete the Checkout Intent last.
 
-- Do not weaken the strict authentication behavior of existing protected `/current`, upload, preview, status, checkout-session, abandon, or webhook endpoints.
-- Do not accept identifiers or credentials from query parameters, request bodies, or custom headers.
-- Do not create a Stripe Checkout Session during recovery.
-- Do not create Customers or Orders.
-- Preserve existing same-origin, no-store, HttpOnly-cookie, Stripe Test-mode, and safe-response rules.
-- Preserve any existing safe reconciliation needed to determine whether a Session is resumable.
+The process must be idempotent and safe under duplicate or overlapping Vercel invocations.
+
+Never delete completed Intents, Orders, Customers, Stripe events, Order-owned uploads, or paid-order images.
+
+## Manual CLI
+
+Add:
+
+- `npm run checkout:cleanup`
+  - dry run;
+  - zero Stripe expiration, Storage deletion, or database mutation.
+
+- `npm run checkout:cleanup -- --execute`
+  - runs one real bounded cleanup batch.
+
+The output may contain aggregate counts but must not print PII, notes, cookies, tokens, Stripe URLs, signatures, Storage keys, credentials, filenames, or file contents.
+
+## Vercel Cron endpoint
+
+Add:
+
+`GET /api/internal/cron/checkout-cleanup`
+
+Requirements:
+
+- Require exact `Authorization: Bearer <CRON_SECRET>`.
+- Compare credentials safely and fail closed.
+- Missing or invalid authorization returns generic `401`.
+- Missing server configuration returns a generic safe failure and performs no work.
+- Reject query-controlled cleanup options.
+- Return `Cache-Control: no-store`.
+- A successful invocation runs one bounded execute batch.
+- Return only a safe aggregate summary.
+- Candidate-level retryable failures may be reported as counts while remaining eligible for the next run.
+- An engine-wide failure returns a generic `500` or `503`.
+- The route must never be exposed through storefront navigation or UI.
+
+Add `CRON_SECRET` to `.env.example` with a placeholder and document that production must use a random secret of at least 32 characters. Never create, print, or modify the real `.env.local` value.
+
+## Vercel schedule
+
+Create or safely merge `vercel.json` with:
+
+- path: `/api/internal/cron/checkout-cleanup`
+- schedule: `0 10 * * *`
+
+This runs once per day at 10:00 UTC on Vercel production deployments.
+
+Preserve any existing Vercel configuration.
+
+## Safe summary
+
+Track aggregate counts such as:
+
+- scanned;
+- eligible;
+- skipped active;
+- skipped protected;
+- Stripe Sessions expired;
+- Storage objects deleted;
+- upload rows deleted;
+- Intents deleted;
+- retryable failures.
+
+Do not include customer or private file information.
 
 ## Focused acceptance coverage
 
-Add only focused tests proving:
+Prove:
 
-1. No cookie returns `204`, an empty body, and no-store.
-2. Invalid, unknown, expired, completed, and abandoned checkout credentials produce the same generic `204`.
-3. A genuinely resumable checkout returns the unchanged safe `200` response.
-4. A real dependency failure returns a generic `500` or `503`, not `204`.
-5. The browser recovery client treats `204` as a normal empty result.
-6. A fresh visit and a post-payment visit produce no recovery-related `401` in the browser console.
-7. After an empty recovery result, the Amount step can create a new Intent.
-8. Existing strict protected endpoints still return their current authentication errors.
-9. No identifiers, secrets, PII, Stripe data, or Storage details enter the DOM, URL, logs, or browser storage.
+1. Dry run performs zero mutations.
+2. Missing or invalid Cron authorization performs zero work.
+3. Valid Cron authorization runs one bounded batch.
+4. Future `deleteAfter` candidates are skipped.
+5. Due unpaid drafts are deleted in Storage → uploads → Intent order.
+6. Completed Intents, Orders, and Order-owned uploads are protected.
+7. Open unpaid Stripe Sessions are expired before cleanup.
+8. Paid, complete, uncertain, and Stripe-failure candidates are skipped.
+9. Storage failure retains database rows for retry.
+10. Missing Storage objects are idempotently accepted.
+11. Duplicate or concurrent runs converge safely.
+12. Unrelated rows and Storage objects remain unchanged.
+13. The response and logs contain no PII, secrets, tokens, Stripe URLs, Storage keys, or file contents.
+14. `vercel.json` contains the exact daily production schedule.
+
+Use only uniquely identified synthetic fixtures during validation. Never execute cleanup against pre-existing user-owned candidates.
 
 ## Validation
 
 Run only:
 
-- focused recovery endpoint/client tests;
-- one focused mocked or production-browser recovery check;
+- focused cleanup service, CLI, authorization, and schedule tests;
+- one isolated database/private-Storage lifecycle with synthetic fixtures;
+- focused Stripe Sandbox retrieve/expire coverage if required;
 - TypeScript;
-- ESLint for changed files, or the existing lint command if required;
+- changed-file ESLint or the existing lint command if required;
 - one production build;
 - `git diff --check`.
 
-Do not run unrelated Storage, upload, webhook, scene, viewport, full Stripe lifecycle, or full acceptance suites unless a focused regression fails and requires investigation.
+Record database and Storage baselines before and after integration validation. Remove only task-created fixtures.
+
+## Documentation
+
+Update the README with:
+
+- how automatic cleanup works;
+- the daily UTC schedule;
+- how to configure `CRON_SECRET` in Vercel;
+- dry-run and manual execute commands;
+- how to inspect Vercel Cron logs;
+- confirmation that paid-order data and images are excluded.
 
 ## Out of scope
 
-Do not add:
+Do not add cleanup for paid Orders, Customers, Stripe events, or fulfilled-order images.
 
-- expired Intent cleanup;
-- database or Storage deletion;
-- scheduled jobs or cron;
-- schemas or migrations;
-- dependencies or environment variables;
-- payment-method, shipping, tax, tracking, email, webhook, Order, Customer, upload, preview, narrative, or unrelated UI changes.
+Do not change checkout, recovery, payment methods, shipping, tax, tracking, email, webhook fulfillment, upload, preview, narrative, or unrelated UI behavior.
 
-Cleanup will be handled in Unit 2.15.
+Do not add dependencies or schema changes unless correctness is impossible with the existing model. If a migration is required, stop and explain the missing invariant before creating it.
 
 ## Repository rules
 
-- Preserve user-owned changes.
-- Do not modify `.env.local`.
+- Preserve user-owned data and existing changes.
+- Do not modify or print `.env.local`.
+- Do not execute cleanup against existing data.
+- Do not deploy to Vercel.
 - Do not commit or push.
-- Stop all task-created servers and browser processes.
-- Report starting and ending HEAD, changed files, focused validation results, and final repository status.
+- Stop all task-created processes.
+- Report starting and ending HEAD, changed files, validation evidence, synthetic cleanup evidence, and final repository status.

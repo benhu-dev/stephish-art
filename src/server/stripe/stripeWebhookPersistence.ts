@@ -51,6 +51,12 @@ export type WebhookOrder = {
   sessionId: string;
 };
 
+export type WebhookLedgerEntry = {
+  checkoutIntentId: number | null;
+  disposition: "ignored" | "processed" | "rejected";
+  id: number;
+};
+
 export const runStripeWebhookTransaction = async <T>(
   request: PayloadRequest,
   operation: (transaction: StorefrontTransaction) => Promise<T>,
@@ -167,25 +173,34 @@ export const readWebhookOrderConflicts = async (
   }));
 };
 
-export const webhookEventExists = async (
-  request: PayloadRequest,
+export const lockWebhookEvent = async (
+  transaction: StorefrontTransaction,
   eventId: string,
-) => {
-  const result = await request.payload.find({
-    collection: "stripe-events",
-    depth: 0,
-    limit: 1,
-    overrideAccess: true,
-    req: request,
-    where: { stripeEventId: { equals: eventId } },
-  });
-  return result.docs.length > 0;
+): Promise<WebhookLedgerEntry | null> => {
+  const result = await transaction.database.execute(sql`
+    SELECT id, disposition, checkout_intent_id
+    FROM public.stripe_events
+    WHERE stripe_event_id = ${eventId}
+    FOR UPDATE
+  `);
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    checkoutIntentId:
+      row.checkout_intent_id === null || row.checkout_intent_id === undefined
+        ? null
+        : Number(row.checkout_intent_id),
+    disposition: String(row.disposition) as WebhookLedgerEntry["disposition"],
+    id: Number(row.id),
+  };
 };
 
-export const createWebhookLedgerEntry = async ({
+export const persistWebhookLedgerEntry = async ({
   code,
   disposition,
   event,
+  existingEventId,
   intentId,
   now,
   request,
@@ -193,10 +208,28 @@ export const createWebhookLedgerEntry = async ({
   code?: StripeWebhookCode;
   disposition: "ignored" | "processed" | "rejected";
   event: WebhookEventEnvelope;
+  existingEventId?: number;
   intentId?: number;
   now: Date;
   request: PayloadRequest;
 }) => {
+  if (existingEventId) {
+    await request.payload.update({
+      collection: "stripe-events",
+      data: {
+        checkoutIntent: intentId ?? null,
+        code: code ?? null,
+        disposition,
+        processedAt: now.toISOString(),
+      },
+      depth: 0,
+      id: existingEventId,
+      overrideAccess: true,
+      req: request,
+    });
+    return;
+  }
+
   await request.payload.create({
     collection: "stripe-events",
     data: {

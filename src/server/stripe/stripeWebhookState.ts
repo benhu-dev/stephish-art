@@ -3,7 +3,7 @@ import type { PayloadRequest } from "payload";
 import { CHECKOUT_INTENT_POLICY } from "../checkout-intents/checkoutIntentPolicy";
 import type { StripeWebhookCode } from "./stripeWebhookContract";
 import {
-  createWebhookLedgerEntry,
+  persistWebhookLedgerEntry,
   type WebhookEventEnvelope,
   type WebhookIntent,
   type WebhookUpload,
@@ -81,11 +81,13 @@ export const recordWebhookDecision = async (
   disposition: "ignored" | "processed" | "rejected",
   code: StripeWebhookCode,
   intentId?: number,
+  existingEventId?: number,
 ) => {
-  await createWebhookLedgerEntry({
+  await persistWebhookLedgerEntry({
     code,
     disposition,
     event,
+    existingEventId,
     intentId,
     now,
     request,

@@ -2,10 +2,10 @@ import type { PayloadRequest } from "payload";
 
 import type { StripeWebhookCode } from "./stripeWebhookContract";
 import {
+  lockWebhookEvent,
   lockWebhookIntent,
   readWebhookUploads,
   runStripeWebhookTransaction,
-  webhookEventExists,
   type WebhookEventEnvelope,
 } from "./stripeWebhookPersistence";
 import type { ValidatedSessionBase } from "./stripeWebhookSession";
@@ -32,7 +32,10 @@ export const recordRejectedStripeEvent = async ({
     const intent = intentId
       ? await lockWebhookIntent(transaction, intentId)
       : null;
-    if (await webhookEventExists(request, event.id)) return "duplicate";
+    const existingEvent = await lockWebhookEvent(transaction, event.id);
+    if (existingEvent && existingEvent.disposition !== "rejected") {
+      return "duplicate";
+    }
     return recordWebhookDecision(
       request,
       event,
@@ -40,6 +43,7 @@ export const recordRejectedStripeEvent = async ({
       "rejected",
       intentId && !intent ? "intent_not_found" : code,
       intent?.id,
+      existingEvent?.id,
     );
   });
 
@@ -56,7 +60,10 @@ export const recordUnpaidStripeSession = async ({
 }) =>
   runStripeWebhookTransaction(request, async (transaction) => {
     const intent = await lockWebhookIntent(transaction, session.intentId);
-    if (await webhookEventExists(request, event.id)) return "duplicate";
+    const existingEvent = await lockWebhookEvent(transaction, event.id);
+    if (existingEvent && existingEvent.disposition !== "rejected") {
+      return "duplicate";
+    }
     if (!intent) {
       return recordWebhookDecision(
         request,
@@ -64,6 +71,8 @@ export const recordUnpaidStripeSession = async ({
         now,
         "rejected",
         "intent_not_found",
+        undefined,
+        existingEvent?.id,
       );
     }
     const conflict = storedSessionConflict(intent, session);
@@ -75,6 +84,7 @@ export const recordUnpaidStripeSession = async ({
         "rejected",
         conflict ?? "intent_state_conflict",
         intent.id,
+        existingEvent?.id,
       );
     }
     const uploads = await readWebhookUploads(transaction, intent.id);
@@ -89,6 +99,7 @@ export const recordUnpaidStripeSession = async ({
         "rejected",
         "invalid_uploads",
         intent.id,
+        existingEvent?.id,
       );
     }
     return recordWebhookDecision(
@@ -98,6 +109,7 @@ export const recordUnpaidStripeSession = async ({
       "ignored",
       "session_unpaid",
       intent.id,
+      existingEvent?.id,
     );
   });
 
@@ -116,7 +128,10 @@ export const expireStripeSession = async ({
 }) =>
   runStripeWebhookTransaction(request, async (transaction) => {
     const intent = await lockWebhookIntent(transaction, session.intentId);
-    if (await webhookEventExists(request, event.id)) return "duplicate";
+    const existingEvent = await lockWebhookEvent(transaction, event.id);
+    if (existingEvent && existingEvent.disposition !== "rejected") {
+      return "duplicate";
+    }
     if (!intent) {
       return recordWebhookDecision(
         request,
@@ -124,6 +139,8 @@ export const expireStripeSession = async ({
         now,
         "rejected",
         "intent_not_found",
+        undefined,
+        existingEvent?.id,
       );
     }
     if (
@@ -140,6 +157,7 @@ export const expireStripeSession = async ({
         "rejected",
         "reconciliation_mismatch",
         intent.id,
+        existingEvent?.id,
       );
     }
     if (intent.status === "completed") {
@@ -150,6 +168,7 @@ export const expireStripeSession = async ({
         "ignored",
         "already_fulfilled",
         intent.id,
+        existingEvent?.id,
       );
     }
     if (intent.status === "expired") {
@@ -160,6 +179,7 @@ export const expireStripeSession = async ({
         "ignored",
         "already_expired",
         intent.id,
+        existingEvent?.id,
       );
     }
     if (intent.status !== "checkout_created") {
@@ -170,6 +190,7 @@ export const expireStripeSession = async ({
         "rejected",
         "intent_state_conflict",
         intent.id,
+        existingEvent?.id,
       );
     }
     await request.payload.update({
@@ -187,5 +208,6 @@ export const expireStripeSession = async ({
       "processed",
       code,
       intent.id,
+      existingEvent?.id,
     );
   });

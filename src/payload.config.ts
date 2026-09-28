@@ -6,6 +6,7 @@ import { buildConfig } from "payload";
 
 import { Customers } from "./collections/Customers";
 import { CheckoutIntents } from "./collections/CheckoutIntents";
+import { EmailOutbox } from "./collections/EmailOutbox";
 import { OrderUploads } from "./collections/OrderUploads";
 import { Orders } from "./collections/Orders";
 import { StripeEvents } from "./collections/StripeEvents";
@@ -43,6 +44,7 @@ export default buildConfig({
     Users,
     Customers,
     Orders,
+    EmailOutbox,
     CheckoutIntents,
     OrderUploads,
     StripeEvents,

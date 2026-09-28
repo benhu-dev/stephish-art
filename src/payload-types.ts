@@ -70,6 +70,7 @@ export interface Config {
     users: User;
     customers: Customer;
     orders: Order;
+    'email-outbox': EmailOutbox;
     'checkout-intents': CheckoutIntent;
     'order-uploads': OrderUpload;
     'stripe-events': StripeEvent;
@@ -87,6 +88,7 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
     orders: OrdersSelect<false> | OrdersSelect<true>;
+    'email-outbox': EmailOutboxSelect<false> | EmailOutboxSelect<true>;
     'checkout-intents': CheckoutIntentsSelect<false> | CheckoutIntentsSelect<true>;
     'order-uploads': OrderUploadsSelect<false> | OrderUploadsSelect<true>;
     'stripe-events': StripeEventsSelect<false> | StripeEventsSelect<true>;
@@ -259,6 +261,24 @@ export interface OrderUpload {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-outbox".
+ */
+export interface EmailOutbox {
+  id: number;
+  order: number | Order;
+  kind: 'customer_order_confirmation' | 'artist_new_order';
+  status: 'pending' | 'processing' | 'sent' | 'failed';
+  attempts: number;
+  nextAttemptAt?: string | null;
+  lockedAt?: string | null;
+  sentAt?: string | null;
+  providerMessageId?: string | null;
+  lastErrorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "stripe-events".
  */
 export interface StripeEvent {
@@ -332,6 +352,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'orders';
         value: number | Order;
+      } | null)
+    | ({
+        relationTo: 'email-outbox';
+        value: number | EmailOutbox;
       } | null)
     | ({
         relationTo: 'checkout-intents';
@@ -452,6 +476,23 @@ export interface OrdersSelect<T extends boolean = true> {
   trackingUrl?: T;
   shippedAt?: T;
   completedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-outbox_select".
+ */
+export interface EmailOutboxSelect<T extends boolean = true> {
+  order?: T;
+  kind?: T;
+  status?: T;
+  attempts?: T;
+  nextAttemptAt?: T;
+  lockedAt?: T;
+  sentAt?: T;
+  providerMessageId?: T;
+  lastErrorCode?: T;
   updatedAt?: T;
   createdAt?: T;
 }

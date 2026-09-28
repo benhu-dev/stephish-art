@@ -1,177 +1,104 @@
-# Phase 2, Unit 2.15 — Automatic Checkout Cleanup
+# Phase 2 — Unit 2.16.1: Repeat-Customer Fulfillment Recovery
 
 ## Goal
 
-Implement safe cleanup for unpaid Checkout Intents whose retention period has ended, including the reusable cleanup service, a dry-run CLI, a protected Vercel Cron endpoint, and a daily production schedule.
+Allow the same guest customer to place unlimited paid orders, even when Stripe creates a different Customer ID for each Checkout Session. Recover the already-paid rejected order for Checkout Intent 332 without manual database edits or duplicate records.
 
-Eligible private Storage objects, Order Upload rows, and Checkout Intents must be deleted without risking paid orders, active Stripe Sessions, or user-owned data.
+## Observed production-like Sandbox case
 
-## Eligibility
+- Event: evt_1UKSAU3vSPVBZHiNjYbsbRNC
+- Checkout Intent: 332
+- Event type: checkout.session.completed
+- Stripe status: complete
+- Payment status: paid
+- The normalized email matches the customer created by the first successful order.
+- Stripe created a different Customer ID for the second Checkout Session.
+- The webhook returned 200 but recorded the event as rejected.
+- No Order or Email Outbox jobs were created for Intent 332.
 
-An Intent is eligible only when:
+Confirm the exact rejection branch in the existing fulfillment code before changing it.
 
-- `deleteAfter` is at or before the current time;
-- it is not completed;
-- it has no Order;
-- none of its uploads belong to an Order;
-- it is not in a transient reservation or finalization state;
-- any Stripe Checkout Session is authoritatively confirmed unpaid and no longer payable.
+## Required behavior
 
-Use the existing `deleteAfter` field as the only retention source of truth.
+1. A normalized email identifies and reuses the existing local Customer.
+2. The same local Customer may own unlimited Orders.
+3. A different Stripe Customer ID must not reject an otherwise valid paid Checkout Session.
+4. `stripeCustomerId` remains optional:
+   - Set it when creating a new local Customer.
+   - Populate it when the existing Customer has no value.
+   - If the existing value differs, preserve the existing value and continue fulfillment.
+   - Never use it as customer authentication or as a prerequisite for Order creation.
+5. Continue retrieving the authoritative Stripe Session before fulfillment.
+6. Preserve every existing validation for:
+   - Test mode
+   - Event and Session type
+   - Intent and checkout-attempt ownership
+   - Currency and exact amounts
+   - Paid/complete status
+   - Shipping details
+   - Required customer name and normalized email
+7. A previously rejected event may be re-evaluated when Stripe resends it:
+   - Lock the existing event/Intent records.
+   - Re-run all authoritative validations.
+   - If now valid, atomically complete fulfillment and transition the existing ledger record to the successful state.
+   - If still invalid, keep it rejected.
+8. Replays and concurrent deliveries must remain idempotent:
+   - Exactly one Order per Checkout Intent.
+   - Exactly two Email Outbox jobs per Order.
+   - No duplicate Customer, Order, upload association, or outbox job.
+9. Do not manually delete or recreate the existing Stripe Event, Customer, Intent, upload, or Storage object.
+10. Do not send email. Only create the two existing pending outbox jobs.
 
-## Stripe safety
+## Live recovery acceptance
 
-For a candidate with a persisted Checkout Session:
+After implementation, with the local Stripe listener using the current Sandbox context, resend:
 
-- Retrieve its latest Stripe Test-mode state outside database transactions.
-- Skip paid, complete, uncertain, or potentially fulfillable Sessions.
-- Expire an open unpaid Session before deleting anything.
-- If Stripe is unavailable or expiration cannot be confirmed, skip the candidate for a later retry.
-- Never create a Session, Customer, Order, payment, or refund.
+stripe events resend evt_1UKSAU3vSPVBZHiNjYbsbRNC
 
-Draft Intents without a Stripe Session require no Stripe call.
+Verify:
 
-## Deletion order
+- Intent 332 becomes completed.
+- The existing rejected Stripe Event becomes successfully processed.
+- Exactly one new Order exists for Intent 332.
+- The existing local Customer is reused.
+- The Customer’s existing Stripe Customer ID is not overwritten.
+- Exactly two pending Email Outbox jobs exist for the recovered Order.
+- Existing uploads are associated with the recovered Order.
+- Replaying the same event again creates nothing additional.
+- The first successful Order remains unchanged.
 
-Process no more than 25 candidates per run.
+## Tests
 
-For each candidate:
+Add focused regression coverage for:
 
-1. Resolve Stripe state when required.
-2. Lock and revalidate the Intent, retention deadline, status, Order absence, and upload ownership.
-3. Delete its private Storage objects through the existing server-side abstraction.
-4. Treat an already-missing object as successful.
-5. If Storage deletion fails, retain the database rows for retry.
-6. Lock and revalidate again.
-7. Delete the related Order Upload rows.
-8. Delete the Checkout Intent last.
-
-The process must be idempotent and safe under duplicate or overlapping Vercel invocations.
-
-Never delete completed Intents, Orders, Customers, Stripe events, Order-owned uploads, or paid-order images.
-
-## Manual CLI
-
-Add:
-
-- `npm run checkout:cleanup`
-  - dry run;
-  - zero Stripe expiration, Storage deletion, or database mutation.
-
-- `npm run checkout:cleanup -- --execute`
-  - runs one real bounded cleanup batch.
-
-The output may contain aggregate counts but must not print PII, notes, cookies, tokens, Stripe URLs, signatures, Storage keys, credentials, filenames, or file contents.
-
-## Vercel Cron endpoint
-
-Add:
-
-`GET /api/internal/cron/checkout-cleanup`
-
-Requirements:
-
-- Require exact `Authorization: Bearer <CRON_SECRET>`.
-- Compare credentials safely and fail closed.
-- Missing or invalid authorization returns generic `401`.
-- Missing server configuration returns a generic safe failure and performs no work.
-- Reject query-controlled cleanup options.
-- Return `Cache-Control: no-store`.
-- A successful invocation runs one bounded execute batch.
-- Return only a safe aggregate summary.
-- Candidate-level retryable failures may be reported as counts while remaining eligible for the next run.
-- An engine-wide failure returns a generic `500` or `503`.
-- The route must never be exposed through storefront navigation or UI.
-
-Add `CRON_SECRET` to `.env.example` with a placeholder and document that production must use a random secret of at least 32 characters. Never create, print, or modify the real `.env.local` value.
-
-## Vercel schedule
-
-Create or safely merge `vercel.json` with:
-
-- path: `/api/internal/cron/checkout-cleanup`
-- schedule: `0 10 * * *`
-
-This runs once per day at 10:00 UTC on Vercel production deployments.
-
-Preserve any existing Vercel configuration.
-
-## Safe summary
-
-Track aggregate counts such as:
-
-- scanned;
-- eligible;
-- skipped active;
-- skipped protected;
-- Stripe Sessions expired;
-- Storage objects deleted;
-- upload rows deleted;
-- Intents deleted;
-- retryable failures.
-
-Do not include customer or private file information.
-
-## Focused acceptance coverage
-
-Prove:
-
-1. Dry run performs zero mutations.
-2. Missing or invalid Cron authorization performs zero work.
-3. Valid Cron authorization runs one bounded batch.
-4. Future `deleteAfter` candidates are skipped.
-5. Due unpaid drafts are deleted in Storage → uploads → Intent order.
-6. Completed Intents, Orders, and Order-owned uploads are protected.
-7. Open unpaid Stripe Sessions are expired before cleanup.
-8. Paid, complete, uncertain, and Stripe-failure candidates are skipped.
-9. Storage failure retains database rows for retry.
-10. Missing Storage objects are idempotently accepted.
-11. Duplicate or concurrent runs converge safely.
-12. Unrelated rows and Storage objects remain unchanged.
-13. The response and logs contain no PII, secrets, tokens, Stripe URLs, Storage keys, or file contents.
-14. `vercel.json` contains the exact daily production schedule.
-
-Use only uniquely identified synthetic fixtures during validation. Never execute cleanup against pre-existing user-owned candidates.
-
-## Validation
+- Same normalized email with a different Stripe Customer ID.
+- Existing Customer with a null Stripe Customer ID.
+- Existing Customer ID preservation.
+- Rejected-event recovery.
+- Invalid rejected event remaining rejected.
+- Duplicate and concurrent replay idempotency.
+- Transaction rollback.
 
 Run only:
 
-- focused cleanup service, CLI, authorization, and schedule tests;
-- one isolated database/private-Storage lifecycle with synthetic fixtures;
-- focused Stripe Sandbox retrieve/expire coverage if required;
-- TypeScript;
-- changed-file ESLint or the existing lint command if required;
-- one production build;
-- `git diff --check`.
+- Focused fulfillment/webhook/outbox tests
+- Focused database lifecycle
+- TypeScript
+- Changed-file ESLint
+- One production build
+- git diff --check
 
-Record database and Storage baselines before and after integration validation. Remove only task-created fixtures.
+Do not run scene, viewport, Storage cleanup, full browser, or unrelated acceptance suites.
 
-## Documentation
+## Constraints
 
-Update the README with:
-
-- how automatic cleanup works;
-- the daily UTC schedule;
-- how to configure `CRON_SECRET` in Vercel;
-- dry-run and manual execute commands;
-- how to inspect Vercel Cron logs;
-- confirmation that paid-order data and images are excluded.
-
-## Out of scope
-
-Do not add cleanup for paid Orders, Customers, Stripe events, or fulfilled-order images.
-
-Do not change checkout, recovery, payment methods, shipping, tax, tracking, email, webhook fulfillment, upload, preview, narrative, or unrelated UI behavior.
-
-Do not add dependencies or schema changes unless correctness is impossible with the existing model. If a migration is required, stop and explain the missing invariant before creating it.
-
-## Repository rules
-
-- Preserve user-owned data and existing changes.
-- Do not modify or print `.env.local`.
-- Do not execute cleanup against existing data.
-- Do not deploy to Vercel.
-- Do not commit or push.
-- Stop all task-created processes.
-- Report starting and ending HEAD, changed files, validation evidence, synthetic cleanup evidence, and final repository status.
+- No schema or migration unless inspection proves it unavoidable.
+- No dependency or environment changes.
+- No frontend changes.
+- No Checkout Session parameter changes.
+- No email provider or worker.
+- No manual database repair.
+- No live-mode Stripe activity.
+- Do not print secrets, webhook payloads, addresses, or customer PII.
+- Preserve mission.md and unrelated user changes.
+- No commit or push.

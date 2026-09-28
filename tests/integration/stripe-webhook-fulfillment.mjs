@@ -50,6 +50,7 @@ const countRows = async () =>
         "(SELECT count(*)::int FROM public.order_uploads) AS order_uploads, " +
         "(SELECT count(*)::int FROM public.customers) AS customers, " +
         "(SELECT count(*)::int FROM public.orders) AS orders, " +
+        "(SELECT count(*)::int FROM public.email_outbox) AS email_outbox, " +
         "(SELECT count(*)::int FROM public.stripe_events) AS stripe_events",
     )
   ).rows[0];
@@ -72,6 +73,24 @@ const nextEventId = () => {
 };
 
 const createRequest = () => createLocalReq({}, payload);
+
+const createUploadForIntent = async (intentId) => {
+  const uploadDocument = await payload.create({
+    collection: "order-uploads",
+    data: { checkoutIntent: intentId, position: 1 },
+    depth: 0,
+    file: {
+      data: png,
+      mimetype: "image/png",
+      name: `${nextValue("upload")}.png`,
+      size: png.length,
+    },
+    overrideAccess: true,
+  });
+  uploadIDs.add(Number(uploadDocument.id));
+  if (uploadDocument.filename) objectKeys.add(uploadDocument.filename);
+  return uploadDocument;
+};
 
 const createFixture = async ({ upload = true } = {}) => {
   const createdAt = new Date(Date.now() - 60_000);
@@ -104,20 +123,7 @@ const createFixture = async ({ upload = true } = {}) => {
 
   let uploadDocument;
   if (upload) {
-    uploadDocument = await payload.create({
-      collection: "order-uploads",
-      data: { checkoutIntent: intentId, position: 1 },
-      depth: 0,
-      file: {
-        data: png,
-        mimetype: "image/png",
-        name: `${nextValue("upload")}.png`,
-        size: png.length,
-      },
-      overrideAccess: true,
-    });
-    uploadIDs.add(Number(uploadDocument.id));
-    if (uploadDocument.filename) objectKeys.add(uploadDocument.filename);
+    uploadDocument = await createUploadForIntent(intentId);
   }
 
   const customerToken = nextValue("customer");
@@ -192,7 +198,12 @@ const eventFor = ({
   type,
 });
 
-const deliver = async ({ event, probe, retrievedSession }) => {
+const deliver = async ({
+  event,
+  now = new Date("2027-01-15T00:00:00.000Z"),
+  probe,
+  retrievedSession,
+}) => {
   const body = JSON.stringify(event);
   const signature = signingStripe.webhooks.generateTestHeaderString({
     payload: body,
@@ -215,7 +226,7 @@ const deliver = async ({ event, probe, retrievedSession }) => {
           event: verified,
           gateway,
           getRequest: createRequest,
-          now: new Date("2027-01-15T00:00:00.000Z"),
+          now,
           probe,
         }),
       verifyEvent: gateway.verifyEvent,
@@ -245,19 +256,32 @@ const rowsForIntent = async (intentId) => {
     );
   const events = await database.query(
       "SELECT stripe_event_id, event_type, disposition, checkout_intent_id, " +
-        "stripe_created_at, code " +
+        "stripe_created_at, processed_at, code " +
         "FROM public.stripe_events WHERE checkout_intent_id = $1 ORDER BY id",
       [intentId],
     );
+  const outbox = await database.query(
+    "SELECT email_outbox.order_id, email_outbox.kind, email_outbox.status, " +
+      "email_outbox.attempts::int, email_outbox.next_attempt_at, email_outbox.locked_at, " +
+      "email_outbox.sent_at, email_outbox.provider_message_id, email_outbox.last_error_code " +
+      "FROM public.email_outbox " +
+      "INNER JOIN public.orders ON orders.id = email_outbox.order_id " +
+      "WHERE orders.checkout_intent_id = $1 ORDER BY email_outbox.kind",
+    [intentId],
+  );
   return {
     events: events.rows,
     intent: intent.rows[0],
     orders: orders.rows,
+    outbox: outbox.rows,
     uploads: uploads.rows,
   };
 };
 
-const assertExactFulfillment = async (fixture) => {
+const assertExactFulfillment = async (
+  fixture,
+  { expectedStripeCustomerId = fixture.stripeCustomerId } = {},
+) => {
   const state = await rowsForIntent(fixture.intentId);
   stage = "SNAPSHOT_INTENT_STATUS";
   if (state.intent.status !== "completed") {
@@ -289,6 +313,34 @@ const assertExactFulfillment = async (fixture) => {
   );
   assert.equal(order.order_status, "new");
   assert.equal(order.payment_status, "paid");
+  stage = "SNAPSHOT_OUTBOX_COUNT";
+  assert.equal(state.outbox.length, 2);
+  stage = "SNAPSHOT_OUTBOX_KINDS";
+  assert.deepEqual(
+    state.outbox.map(({ kind }) => kind).sort(),
+    ["artist_new_order", "customer_order_confirmation"],
+  );
+  stage = "SNAPSHOT_OUTBOX_ORDER";
+  assert.deepEqual(
+    state.outbox.map(({ order_id }) => Number(order_id)),
+    [order.id, order.id],
+  );
+  stage = "SNAPSHOT_OUTBOX_PENDING";
+  assert.deepEqual(
+    state.outbox.map(({ attempts, status }) => ({ attempts, status })),
+    [
+      { attempts: 0, status: "pending" },
+      { attempts: 0, status: "pending" },
+    ],
+  );
+  stage = "SNAPSHOT_OUTBOX_OPTIONAL_FIELDS";
+  for (const job of state.outbox) {
+    assert.equal(job.next_attempt_at, null);
+    assert.equal(job.locked_at, null);
+    assert.equal(job.sent_at, null);
+    assert.equal(job.provider_message_id, null);
+    assert.equal(job.last_error_code, null);
+  }
   stage = "SNAPSHOT_ORDER_SHIPPING";
   assert.equal(order.shipping_address_recipient_name, fixture.customerName);
   assert.equal(order.shipping_address_line1, "1 Test Way");
@@ -311,7 +363,7 @@ const assertExactFulfillment = async (fixture) => {
   ).rows[0];
   assert.equal(customer.full_name, fixture.customerName);
   assert.equal(customer.email, fixture.customerEmail);
-  assert.equal(customer.stripe_customer_id, fixture.stripeCustomerId);
+  assert.equal(customer.stripe_customer_id, expectedStripeCustomerId);
   customerIDs.add(Number(customer.id));
   return { order, state };
 };
@@ -320,6 +372,7 @@ const assertRejected = async (fixture, code) => {
   const state = await rowsForIntent(fixture.intentId);
   assert.equal(state.intent.status, "checkout_created");
   assert.equal(state.orders.length, 0);
+  assert.equal(state.outbox.length, 0);
   assert.equal(state.events.length, 1);
   assert.equal(state.events[0].disposition, "rejected");
   assert.equal(state.events[0].code, code);
@@ -333,10 +386,14 @@ loadEnvConfig(projectRoot, true, { error() {}, info() {} });
 try {
   stage = "CONNECT";
   assert.equal(process.env.STRIPE_SECRET_KEY.startsWith("sk_test_"), true);
+  stage = "CONNECT_PAYLOAD_CONFIG";
   const { default: config } = await import("../../src/payload.config.ts");
+  stage = "CONNECT_PAYLOAD";
   payload = await getPayload({ config });
+  stage = "CONNECT_DATABASE";
   database = new Client({ connectionString: process.env.DATABASE_URL });
   await database.connect();
+  stage = "CONNECT_STORAGE";
   storage = new S3Client({
     credentials: {
       accessKeyId: process.env.SUPABASE_STORAGE_ACCESS_KEY_ID,
@@ -346,17 +403,10 @@ try {
     forcePathStyle: true,
     region: process.env.SUPABASE_STORAGE_REGION,
   });
+  stage = "BASELINE_COUNTS";
   baselineCounts = await countRows();
+  stage = "BASELINE_OBJECTS";
   baselineObjects = (await listObjects()).map(({ Key }) => Key).sort();
-  assert.deepEqual(baselineCounts, {
-    checkout_intents: 0,
-    customers: 0,
-    order_uploads: 0,
-    orders: 0,
-    stripe_events: 0,
-  });
-  assert.deepEqual(baselineObjects, []);
-
   stage = "SIGNED_UNRELATED";
   let unrelatedRequestCount = 0;
   const unrelatedEvent = {
@@ -430,6 +480,7 @@ try {
   stage = "DUPLICATE_COUNTS";
   let paidState = await rowsForIntent(paid.intentId);
   assert.equal(paidState.orders.length, 1);
+  assert.equal(paidState.outbox.length, 2);
   assert.equal(paidState.events.length, 1);
 
   stage = "UNPAID_THEN_ASYNC_SUCCESS";
@@ -444,6 +495,7 @@ try {
   let delayedState = await rowsForIntent(delayed.intentId);
   assert.equal(delayedState.intent.status, "checkout_created");
   assert.equal(delayedState.orders.length, 0);
+  assert.equal(delayedState.outbox.length, 0);
   assert.equal(delayedState.events[0].code, "session_unpaid");
   const asyncSuccess = eventFor({
     eventSession: delayed.session,
@@ -467,6 +519,7 @@ try {
     [200, 200],
   );
   const concurrentResult = await assertExactFulfillment(concurrent);
+  assert.equal(concurrentResult.state.outbox.length, 2);
   assert.equal(concurrentResult.state.events.length, 1);
 
   stage = "REVERSED_SUCCESS_ORDER";
@@ -485,6 +538,7 @@ try {
     200,
   );
   const reversedResult = await assertExactFulfillment(reversed);
+  assert.equal(reversedResult.state.outbox.length, 2);
   assert.equal(reversedResult.state.events.length, 2);
   assert.equal(reversedResult.state.events[1].code, "already_fulfilled");
 
@@ -539,18 +593,145 @@ try {
     1,
   );
 
-  stage = "IDENTITY_CONFLICT";
-  const identityConflict = await createFixture();
-  identityConflict.customerEmail = reusable.customerEmail;
-  identityConflict.session.customer_details.email = reusable.customerEmail;
+  stage = "REPEAT_CUSTOMER_DIFFERENT_STRIPE_ID";
+  const repeatCustomer = await createFixture();
+  repeatCustomer.customerEmail = reusable.customerEmail;
+  repeatCustomer.customerName = reusable.customerName;
+  repeatCustomer.session.customer_details.email = reusable.customerEmail;
+  repeatCustomer.session.customer_details.name = reusable.customerName;
+  repeatCustomer.session.collected_information.shipping_details.name = reusable.customerName;
   assert.equal(
     (await deliver({
-      event: eventFor({ eventSession: identityConflict.session }),
-      retrievedSession: identityConflict.session,
+      event: eventFor({ eventSession: repeatCustomer.session }),
+      retrievedSession: repeatCustomer.session,
     })).status,
     200,
   );
-  await assertRejected(identityConflict, "identity_conflict");
+  const repeatResult = await assertExactFulfillment(repeatCustomer, {
+    expectedStripeCustomerId: reusable.stripeCustomerId,
+  });
+  assert.equal(repeatResult.order.customer_id, Number(existingCustomer.id));
+  assert.notEqual(repeatCustomer.stripeCustomerId, reusable.stripeCustomerId);
+  assert.equal(
+    Number(
+      (
+        await database.query(
+          "SELECT count(*)::int AS count FROM public.customers WHERE email = $1",
+          [reusable.customerEmail],
+        )
+      ).rows[0].count,
+    ),
+    1,
+  );
+
+  stage = "REJECTED_EVENT_RECOVERY_CONCURRENT";
+  const recoverable = await createFixture({ upload: false });
+  const recoverableEvent = eventFor({ eventSession: recoverable.session });
+  assert.equal(
+    (
+      await deliver({
+        event: recoverableEvent,
+        retrievedSession: recoverable.session,
+      })
+    ).status,
+    200,
+  );
+  await assertRejected(recoverable, "invalid_uploads");
+  await createUploadForIntent(recoverable.intentId);
+  const recoveryResponses = await Promise.all([
+    deliver({
+      event: recoverableEvent,
+      now: new Date("2027-01-16T00:00:00.000Z"),
+      retrievedSession: recoverable.session,
+    }),
+    deliver({
+      event: recoverableEvent,
+      now: new Date("2027-01-16T00:00:00.000Z"),
+      retrievedSession: recoverable.session,
+    }),
+  ]);
+  assert.deepEqual(
+    recoveryResponses.map(({ status }) => status),
+    [200, 200],
+  );
+  const recoveredResult = await assertExactFulfillment(recoverable);
+  assert.equal(recoveredResult.state.events.length, 1);
+  assert.equal(recoveredResult.state.events[0].disposition, "processed");
+  assert.equal(recoveredResult.state.events[0].code, null);
+
+  stage = "INVALID_REJECTED_EVENT_REMAINS_REJECTED";
+  const stillInvalid = await createFixture({ upload: false });
+  const stillInvalidEvent = eventFor({ eventSession: stillInvalid.session });
+  assert.equal(
+    (
+      await deliver({
+        event: stillInvalidEvent,
+        retrievedSession: stillInvalid.session,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await deliver({
+        event: stillInvalidEvent,
+        now: new Date("2027-01-16T00:00:00.000Z"),
+        retrievedSession: stillInvalid.session,
+      })
+    ).status,
+    200,
+  );
+  const stillInvalidState = await rowsForIntent(stillInvalid.intentId);
+  assert.equal(stillInvalidState.events.length, 1);
+  assert.equal(stillInvalidState.events[0].disposition, "rejected");
+  assert.equal(stillInvalidState.events[0].code, "invalid_uploads");
+  assert.equal(
+    new Date(stillInvalidState.events[0].processed_at).toISOString(),
+    "2027-01-16T00:00:00.000Z",
+  );
+
+  stage = "REJECTED_EVENT_RECOVERY_ROLLBACK";
+  const rollbackRecovery = await createFixture({ upload: false });
+  const rollbackRecoveryEvent = eventFor({ eventSession: rollbackRecovery.session });
+  assert.equal(
+    (
+      await deliver({
+        event: rollbackRecoveryEvent,
+        retrievedSession: rollbackRecovery.session,
+      })
+    ).status,
+    200,
+  );
+  await assertRejected(rollbackRecovery, "invalid_uploads");
+  await createUploadForIntent(rollbackRecovery.intentId);
+  assert.equal(
+    (
+      await deliver({
+        event: rollbackRecoveryEvent,
+        now: new Date("2027-01-16T00:00:00.000Z"),
+        probe: {
+          afterLedger: () => {
+            throw new Error("INJECTED_RECOVERY_FAILURE");
+          },
+        },
+        retrievedSession: rollbackRecovery.session,
+      })
+    ).status,
+    500,
+  );
+  await assertRejected(rollbackRecovery, "invalid_uploads");
+  assert.equal(
+    (
+      await deliver({
+        event: rollbackRecoveryEvent,
+        now: new Date("2027-01-17T00:00:00.000Z"),
+        retrievedSession: rollbackRecovery.session,
+      })
+    ).status,
+    200,
+  );
+  const rollbackRecoveredResult = await assertExactFulfillment(rollbackRecovery);
+  assert.equal(rollbackRecoveredResult.state.events.length, 1);
 
   stage = "MISMATCH_MATRIX";
   const mismatchCases = [
@@ -639,6 +820,7 @@ try {
   for (const probeName of [
     "afterCustomer",
     "afterOrder",
+    "afterFirstOutboxJob",
     "afterUploads",
     "afterIntent",
     "afterLedger",
@@ -653,6 +835,7 @@ try {
     const state = await rowsForIntent(fixture.intentId);
     assert.equal(state.intent.status, "checkout_created");
     assert.equal(state.orders.length, 0);
+    assert.equal(state.outbox.length, 0);
     assert.equal(state.events.length, 0);
     assert.equal(state.uploads[0].order_id, null);
     assert.equal(
@@ -682,6 +865,7 @@ try {
     const state = await rowsForIntent(fixture.intentId);
     assert.equal(state.intent.status, "expired");
     assert.equal(state.orders.length, 0);
+    assert.equal(state.outbox.length, 0);
     assert.equal(state.events[0].code, expectedCode);
   }
 
@@ -696,10 +880,83 @@ try {
   paidState = await rowsForIntent(paid.intentId);
   assert.equal(paidState.intent.status, "completed");
   assert.equal(paidState.orders.length, 1);
+  assert.equal(paidState.outbox.length, 2);
   assert.equal(paidState.events.at(-1).code, "already_fulfilled");
+
+  stage = "HISTORICAL_ORDER_REPLAY";
+  const historical = await createFixture();
+  const historicalCustomer = await payload.create({
+    collection: "customers",
+    data: {
+      email: historical.customerEmail,
+      fullName: historical.customerName,
+      stripeCustomerId: historical.stripeCustomerId,
+    },
+    depth: 0,
+    overrideAccess: true,
+  });
+  customerIDs.add(Number(historicalCustomer.id));
+  const historicalOrder = await payload.create({
+    collection: "orders",
+    data: {
+      amountCents: 900,
+      checkoutIntent: historical.intentId,
+      contactEmail: historical.customerEmail,
+      currency: "usd",
+      customer: historicalCustomer.id,
+      orderStatus: "new",
+      paidAt: new Date(1_800_000_000 * 1000).toISOString(),
+      paymentStatus: "paid",
+      shippingAddress: {
+        city: "Brooklyn",
+        country: "US",
+        line1: "1 Test Way",
+        line2: "Apt 2",
+        postalCode: "11201",
+        recipientName: historical.customerName,
+        state: "NY",
+      },
+      stripeCheckoutSessionId: historical.sessionId,
+      stripePaymentIntentId: historical.paymentIntentId,
+    },
+    depth: 0,
+    overrideAccess: true,
+  });
+  await payload.update({
+    collection: "order-uploads",
+    data: { order: historicalOrder.id },
+    depth: 0,
+    id: historical.uploadDocument.id,
+    overrideAccess: true,
+  });
+  await payload.update({
+    collection: "checkout-intents",
+    data: { status: "completed" },
+    depth: 0,
+    id: historical.intentId,
+    overrideAccess: true,
+  });
+  assert.equal(
+    (
+      await deliver({
+        event: eventFor({ eventSession: historical.session }),
+        retrievedSession: historical.session,
+      })
+    ).status,
+    200,
+  );
+  const historicalState = await rowsForIntent(historical.intentId);
+  assert.equal(historicalState.orders.length, 1);
+  assert.equal(historicalState.outbox.length, 0);
+  assert.equal(historicalState.events.length, 1);
+  assert.equal(historicalState.events[0].code, "already_fulfilled");
 
   stage = "ACCESS_AND_PRIVACY";
   for (const [path, init] of [
+    ["/api/email-outbox", undefined],
+    ["/api/email-outbox", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }],
+    ["/api/email-outbox/1", { method: "PATCH", headers: { "content-type": "application/json" }, body: "{}" }],
+    ["/api/email-outbox/1", { method: "DELETE" }],
     ["/api/stripe-events", undefined],
     ["/api/stripe-events", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }],
     ["/api/stripe-events/1", { method: "PATCH", headers: { "content-type": "application/json" }, body: "{}" }],
@@ -745,6 +1002,78 @@ try {
   assert.equal(ledgerText.includes("1 Test Way"), false);
   assert.equal(ledgerText.includes(signingSecret), false);
 
+  const outboxColumns = (
+    await database.query(
+      "SELECT column_name FROM information_schema.columns " +
+        "WHERE table_schema = 'public' AND table_name = 'email_outbox' ORDER BY column_name",
+    )
+  ).rows.map(({ column_name }) => column_name);
+  assert.deepEqual(outboxColumns, [
+    "attempts",
+    "created_at",
+    "id",
+    "kind",
+    "last_error_code",
+    "locked_at",
+    "next_attempt_at",
+    "order_id",
+    "provider_message_id",
+    "sent_at",
+    "status",
+    "updated_at",
+  ]);
+  const outboxIndexes = (
+    await database.query(
+      "SELECT indexdef FROM pg_indexes " +
+        "WHERE schemaname = 'public' AND tablename = 'email_outbox'",
+    )
+  ).rows.map(({ indexdef }) => indexdef);
+  assert.equal(
+    outboxIndexes.some(
+      (definition) =>
+        definition.includes("CREATE UNIQUE INDEX") &&
+        /\(order_id, kind\)$/.test(definition),
+    ),
+    true,
+  );
+  const outboxRls = (
+    await database.query(
+      "SELECT relrowsecurity, relforcerowsecurity FROM pg_class " +
+        "WHERE oid = 'public.email_outbox'::regclass",
+    )
+  ).rows[0];
+  assert.equal(outboxRls.relrowsecurity, true);
+  assert.equal(outboxRls.relforcerowsecurity, false);
+  assert.equal(
+    Number(
+      (
+        await database.query(
+          "SELECT count(*)::int AS count FROM pg_policies " +
+            "WHERE schemaname = 'public' AND tablename = 'email_outbox'",
+        )
+      ).rows[0].count,
+    ),
+    0,
+  );
+  const outboxText = JSON.stringify(
+    (
+      await database.query(
+        "SELECT order_id, kind, status, attempts, next_attempt_at, locked_at, " +
+          "sent_at, provider_message_id, last_error_code FROM public.email_outbox",
+      )
+    ).rows,
+  );
+  for (const privateValue of [
+    "@example.invalid",
+    "1 Test Way",
+    signingSecret,
+    "cs_test",
+    "pi_test",
+    ".png",
+  ]) {
+    assert.equal(outboxText.includes(privateValue), false);
+  }
+
   const rls = (
     await database.query(
       "SELECT relrowsecurity, relforcerowsecurity FROM pg_class " +
@@ -789,6 +1118,17 @@ try {
         [[...intentIDs]],
       );
       for (const { id } of orderRows.rows) {
+        const outboxRows = await database.query(
+          "SELECT id FROM public.email_outbox WHERE order_id = $1",
+          [id],
+        );
+        for (const { id: outboxId } of outboxRows.rows) {
+          await payload.delete({
+            collection: "email-outbox",
+            id: outboxId,
+            overrideAccess: true,
+          });
+        }
         await payload.delete({ collection: "orders", id, overrideAccess: true });
       }
       for (const uploadId of uploadIDs) {
@@ -870,16 +1210,22 @@ try {
     console.log("STRIPE_WEBHOOK_FULFILLMENT_RESULT=PASS");
     console.log("SIGNED_UNRELATED_AND_UNSUPPORTED=PASS");
     console.log("PAID_SNAPSHOTS_AND_CUSTOMER_REUSE=PASS");
+    console.log("OUTBOX_EXACTLY_TWO_PENDING=PASS");
+    console.log("OUTBOX_REPLAY_CONCURRENCY_ROLLBACK=PASS");
+    console.log("HISTORICAL_ORDER_NOT_BACKFILLED=PASS");
     console.log("DUPLICATE_CONCURRENT_AND_REVERSED_ORDER=PASS");
-    console.log("MISMATCH_AND_IDENTITY_DENIAL=PASS");
+    console.log("REPEAT_CUSTOMER_AND_REJECTED_RECOVERY=PASS");
+    console.log("MISMATCH_VALIDATION=PASS");
     console.log("TRANSACTION_ROLLBACK_MATRIX=PASS");
     console.log("ASYNC_FAILURE_AND_EXPIRY=PASS");
     console.log("ANONYMOUS_API_GRAPHQL_STORAGE=DENIED");
     console.log("LEDGER_PRIVACY_AND_RLS=PASS");
+    console.log("OUTBOX_UNIQUE_PRIVACY_AND_RLS=PASS");
     console.log(`FINAL_CHECKOUT_INTENT_COUNT=${finalCounts.checkout_intents}`);
     console.log(`FINAL_ORDER_UPLOAD_COUNT=${finalCounts.order_uploads}`);
     console.log(`FINAL_BUCKET_OBJECT_COUNT=${finalObjects.length}`);
     console.log(`FINAL_CUSTOMER_COUNT=${finalCounts.customers}`);
+    console.log(`FINAL_EMAIL_OUTBOX_COUNT=${finalCounts.email_outbox}`);
     console.log(`FINAL_ORDER_COUNT=${finalCounts.orders}`);
     console.log(`FINAL_STRIPE_EVENT_COUNT=${finalCounts.stripe_events}`);
   } else if (cleanupFailed) {

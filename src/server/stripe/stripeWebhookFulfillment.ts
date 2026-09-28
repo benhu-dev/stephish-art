@@ -1,13 +1,14 @@
 import type { PayloadRequest } from "payload";
 
+import { createOrderEmailOutboxJobs } from "../email/emailOutbox";
 import type { StorefrontTransaction } from "../storefront/storefrontTransaction";
 import {
-  createWebhookLedgerEntry,
   lockWebhookIntent,
+  lockWebhookEvent,
+  persistWebhookLedgerEntry,
   readWebhookOrderConflicts,
   readWebhookUploads,
   runStripeWebhookTransaction,
-  webhookEventExists,
   type WebhookEventEnvelope,
   type WebhookIntent,
 } from "./stripeWebhookPersistence";
@@ -20,6 +21,7 @@ import {
 
 export type StripeWebhookTestProbe = {
   afterCustomer?: () => Promise<void> | void;
+  afterFirstOutboxJob?: () => Promise<void> | void;
   afterIntent?: () => Promise<void> | void;
   afterLedger?: () => Promise<void> | void;
   afterOrder?: () => Promise<void> | void;
@@ -33,15 +35,10 @@ const resolveCustomer = async (
   const matches = await request.payload.find({
     collection: "customers",
     depth: 0,
-    limit: 3,
+    limit: 2,
     overrideAccess: true,
     req: request,
-    where: {
-      or: [
-        { email: { equals: session.customerEmail } },
-        { stripeCustomerId: { equals: session.stripeCustomerId } },
-      ],
-    },
+    where: { email: { equals: session.customerEmail } },
   });
   if (matches.docs.length === 0) {
     return request.payload.create({
@@ -59,13 +56,6 @@ const resolveCustomer = async (
   if (matches.docs.length !== 1) return null;
 
   const customer = matches.docs[0];
-  if (customer.email !== session.customerEmail) return null;
-  if (
-    customer.stripeCustomerId &&
-    customer.stripeCustomerId !== session.stripeCustomerId
-  ) {
-    return null;
-  }
   if (!customer.stripeCustomerId) {
     return request.payload.update({
       collection: "customers",
@@ -116,7 +106,10 @@ export const fulfillPaidStripeSession = async ({
 }) =>
   runStripeWebhookTransaction(request, async (transaction) => {
     const intent = await lockWebhookIntent(transaction, session.intentId);
-    if (await webhookEventExists(request, event.id)) return "duplicate";
+    const existingEvent = await lockWebhookEvent(transaction, event.id);
+    if (existingEvent && existingEvent.disposition !== "rejected") {
+      return "duplicate";
+    }
     if (!intent) {
       return recordWebhookDecision(
         request,
@@ -124,6 +117,8 @@ export const fulfillPaidStripeSession = async ({
         now,
         "rejected",
         "intent_not_found",
+        undefined,
+        existingEvent?.id,
       );
     }
     const conflict = storedSessionConflict(intent, session);
@@ -135,6 +130,7 @@ export const fulfillPaidStripeSession = async ({
         "rejected",
         conflict,
         intent.id,
+        existingEvent?.id,
       );
     }
 
@@ -155,6 +151,7 @@ export const fulfillPaidStripeSession = async ({
         "ignored",
         "already_fulfilled",
         intent.id,
+        existingEvent?.id,
       );
     }
     if (intent.status !== "checkout_created") {
@@ -165,6 +162,7 @@ export const fulfillPaidStripeSession = async ({
         "rejected",
         "intent_state_conflict",
         intent.id,
+        existingEvent?.id,
       );
     }
 
@@ -180,6 +178,7 @@ export const fulfillPaidStripeSession = async ({
         "rejected",
         "invalid_uploads",
         intent.id,
+        existingEvent?.id,
       );
     }
     const orderConflicts = await readWebhookOrderConflicts(
@@ -196,6 +195,7 @@ export const fulfillPaidStripeSession = async ({
         "rejected",
         "reconciliation_mismatch",
         intent.id,
+        existingEvent?.id,
       );
     }
 
@@ -208,6 +208,7 @@ export const fulfillPaidStripeSession = async ({
         "rejected",
         "identity_conflict",
         intent.id,
+        existingEvent?.id,
       );
     }
     await probe.afterCustomer?.();
@@ -252,9 +253,15 @@ export const fulfillPaidStripeSession = async ({
       req: request,
     });
     await probe.afterIntent?.();
-    await createWebhookLedgerEntry({
+    await createOrderEmailOutboxJobs({
+      afterFirstJob: probe.afterFirstOutboxJob,
+      orderId: Number(order.id),
+      request,
+    });
+    await persistWebhookLedgerEntry({
       disposition: "processed",
       event,
+      existingEventId: existingEvent?.id,
       intentId: intent.id,
       now,
       request,

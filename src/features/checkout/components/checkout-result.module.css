@@ -66,6 +66,162 @@
   text-wrap: balance;
 }
 
+.status {
+  min-width: 0;
+}
+
+.processingContent,
+.confirmedState,
+.confirmedContent {
+  min-width: 0;
+}
+
+.processingStage {
+  align-items: center;
+  display: flex;
+  height: 7.5rem;
+  justify-content: center;
+  margin: -.5rem 0 .75rem;
+}
+
+.processingPostmark {
+  align-items: center;
+  color: rgb(38 61 50 / 62%);
+  display: grid;
+  font: 800 .85rem/1 system-ui, sans-serif;
+  height: 5.5rem;
+  letter-spacing: .14em;
+  position: relative;
+  width: 5.5rem;
+}
+
+.postmarkRing,
+.processingPostmarkLabel {
+  grid-area: 1 / 1;
+}
+
+.postmarkRing {
+  height: 100%;
+  overflow: visible;
+  width: 100%;
+}
+
+.postmarkRingStroke {
+  animation: processing-ring-draw 950ms linear infinite;
+  fill: none;
+  filter: drop-shadow(.6px .35px 0 color-mix(in srgb, currentColor 35%, transparent));
+  stroke: currentColor;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  stroke-linecap: round;
+  stroke-width: 3.5;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  vector-effect: non-scaling-stroke;
+}
+
+.processingPostmarkLabel {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-self: center;
+  z-index: 1;
+}
+
+.processingPostmark::after {
+  background: repeating-linear-gradient(
+    180deg,
+    currentColor 0 2px,
+    transparent 2px 7px
+  );
+  content: "";
+  height: 2.8rem;
+  left: 4.8rem;
+  opacity: .65;
+  position: absolute;
+  top: 1.2rem;
+  width: 3.6rem;
+}
+
+.processingPostmarkLabel strong {
+  font: inherit;
+}
+
+.processingPostmarkLabel small {
+  font-size: .52rem;
+  letter-spacing: .24em;
+  margin-top: .35rem;
+}
+
+.headingEllipsis {
+  display: inline-flex;
+  justify-content: space-between;
+  margin-inline-start: .08em;
+  white-space: nowrap;
+  width: .68em;
+}
+
+.headingEllipsis span {
+  animation: ellipsis-dot 950ms ease-in-out infinite;
+  opacity: .28;
+}
+
+.headingEllipsis span:nth-child(2) { animation-delay: 140ms; }
+.headingEllipsis span:nth-child(3) { animation-delay: 280ms; }
+
+.slowMessage {
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  font-size: .95rem !important;
+}
+
+.confirmedStamp {
+  align-items: center;
+  animation: confirmed-stamp-in 420ms cubic-bezier(.2, .8, .2, 1) both;
+  border: 3px double currentColor;
+  color: var(--accent);
+  display: inline-flex;
+  flex-direction: column;
+  font: 800 .68rem/1 system-ui, sans-serif;
+  letter-spacing: .18em;
+  margin: 0 0 1.4rem;
+  padding: .62rem .9rem .52rem;
+  transform: rotate(-5deg);
+}
+
+.confirmedStamp strong {
+  font-size: 1rem;
+  letter-spacing: .1em;
+  margin-top: .3rem;
+}
+
+.confirmedContent {
+  animation: confirmed-content-in 420ms ease-out both;
+}
+
+@keyframes processing-ring-draw {
+  0% { opacity: 0; stroke-dashoffset: 100; }
+  3% { opacity: 1; stroke-dashoffset: 100; }
+  74% { opacity: 1; stroke-dashoffset: 0; }
+  86% { opacity: 1; stroke-dashoffset: 0; }
+  92% { opacity: 0; stroke-dashoffset: 0; }
+  100% { opacity: 0; stroke-dashoffset: 100; }
+}
+
+@keyframes ellipsis-dot {
+  0%, 20%, 100% { opacity: .28; }
+  45% { opacity: 1; }
+}
+
+@keyframes confirmed-stamp-in {
+  from { opacity: 0; transform: rotate(-12deg) scale(1.18); }
+  to { opacity: 1; transform: rotate(-5deg) scale(1); }
+}
+
+@keyframes confirmed-content-in {
+  from { opacity: 0; transform: translateY(.45rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .status p,
 .card > p {
   font-size: clamp(1rem, 2.5vw, 1.18rem);
@@ -155,15 +311,45 @@
   .primaryAction, .secondaryAction { width: 100%; }
 }
 
+@media (max-width: 390px) {
+  .page { padding: .75rem; }
+  .card {
+    min-height: calc(100svh - 1.5rem);
+    padding: 4.5rem 1.25rem 1.5rem;
+  }
+  .processingPostmark::after { width: 2.6rem; }
+  .confirmedStamp { max-width: 100%; }
+}
+
 @media (max-height: 31rem) and (orientation: landscape) {
   .page { align-items: flex-start; padding: .75rem; }
   .card { max-width: 44rem; min-height: calc(100svh - 1.5rem); padding: 2rem 5rem 2rem 2rem; }
   .title { font-size: clamp(1.8rem, 6vh, 2.6rem); margin-bottom: .8rem; }
   .status p, .card > p { margin-bottom: 1rem; }
   .summary { margin: 1rem 0; }
+  .processingStage { height: 5.5rem; margin: -1rem 0 .25rem; }
+  .processingPostmark { height: 4.5rem; width: 4.5rem; }
+  .processingPostmark::after { left: 3.8rem; top: .8rem; }
+  .confirmedStamp { float: right; margin: 0 0 .5rem 1rem; }
+  .actions { margin-top: 1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .card { transform: none; }
+  .confirmedStamp,
+  .confirmedContent {
+    animation: none;
+    transform: none;
+  }
+  .postmarkRingStroke {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
+  }
+  .headingEllipsis span {
+    animation: none;
+    opacity: 1;
+  }
   .primaryAction, .secondaryAction { scroll-behavior: auto; transition: none; }
 }

@@ -1,104 +1,109 @@
-# Phase 2 — Unit 2.16.1: Repeat-Customer Fulfillment Recovery
+# Phase 2 — Unit 2.16.2: Checkout Confirmation Transition
 
 ## Goal
 
-Allow the same guest customer to place unlimited paid orders, even when Stripe creates a different Customer ID for each Checkout Session. Recover the already-paid rejected order for Checkout Intent 332 without manual database edits or duplicate records.
+Polish the existing `/checkout/success` experience with a short, interruptible NYC postmark animation while preserving the existing status polling and payment behavior.
 
-## Observed production-like Sandbox case
+This Unit is presentation-only. Do not change Stripe, webhook fulfillment, database records, status contracts, or payment logic.
 
-- Event: evt_1UKSAU3vSPVBZHiNjYbsbRNC
-- Checkout Intent: 332
-- Event type: checkout.session.completed
-- Stripe status: complete
-- Payment status: paid
-- The normalized email matches the customer created by the first successful order.
-- Stripe created a different Customer ID for the second Checkout Session.
-- The webhook returned 200 but recorded the event as rejected.
-- No Order or Email Outbox jobs were created for Intent 332.
+## Required experience
 
-Confirm the exact rejection branch in the existing fulfillment code before changing it.
+### Processing
 
-## Required behavior
+When the status is processing:
 
-1. A normalized email identifies and reuses the existing local Customer.
-2. The same local Customer may own unlimited Orders.
-3. A different Stripe Customer ID must not reject an otherwise valid paid Checkout Session.
-4. `stripeCustomerId` remains optional:
-   - Set it when creating a new local Customer.
-   - Populate it when the existing Customer has no value.
-   - If the existing value differs, preserve the existing value and continue fulfillment.
-   - Never use it as customer authentication or as a prerequisite for Order creation.
-5. Continue retrieving the authoritative Stripe Session before fulfillment.
-6. Preserve every existing validation for:
-   - Test mode
-   - Event and Session type
-   - Intent and checkout-attempt ownership
-   - Currency and exact amounts
-   - Paid/complete status
-   - Shipping details
-   - Required customer name and normalized email
-7. A previously rejected event may be re-evaluated when Stripe resends it:
-   - Lock the existing event/Intent records.
-   - Re-run all authoritative validations.
-   - If now valid, atomically complete fulfillment and transition the existing ledger record to the successful state.
-   - If still invalid, keep it rejected.
-8. Replays and concurrent deliveries must remain idempotent:
-   - Exactly one Order per Checkout Intent.
-   - Exactly two Email Outbox jobs per Order.
-   - No duplicate Customer, Order, upload association, or outbox job.
-9. Do not manually delete or recreate the existing Stripe Event, Customer, Intent, upload, or Storage object.
-10. Do not send email. Only create the two existing pending outbox jobs.
+- Show the heading: `Confirming your order…`
+- Show supporting copy explaining that the payment was submitted and the order is being finalized.
+- Reuse or extend the existing NYC postmark styling as the loading indicator.
+- Delay the animated loader’s visibility by approximately 150ms to prevent flashing during extremely fast confirmation.
+- Use a short seamless loop, approximately 0.8–1.2 seconds, that looks intentional at any interruption point.
+- Do not impose a minimum processing duration.
+- Do not delay or block polling.
 
-## Live recovery acceptance
+### Confirmed
 
-After implementation, with the local Stripe listener using the current Sandbox context, resend:
+As soon as the existing status endpoint returns confirmed:
 
-stripe events resend evt_1UKSAU3vSPVBZHiNjYbsbRNC
+- Update the application state immediately.
+- Stop the processing animation.
+- Trigger a pink `CONFIRMED` postmark effect.
+- Animate the stamp and content transition over approximately 350–500ms.
+- The animation must be purely visual and must not delay the confirmed state in JavaScript.
+- Crossfade the existing confirmed heading, monetary summary, and `Return Home` action into the same card.
+- Do not automatically redirect to the homepage.
 
-Verify:
+If confirmation arrives before the loader’s 150ms appearance delay, skip the loader and show the confirmed transition directly.
 
-- Intent 332 becomes completed.
-- The existing rejected Stripe Event becomes successfully processed.
-- Exactly one new Order exists for Intent 332.
-- The existing local Customer is reused.
-- The Customer’s existing Stripe Customer ID is not overwritten.
-- Exactly two pending Email Outbox jobs exist for the recovered Order.
-- Existing uploads are associated with the recovered Order.
-- Replaying the same event again creates nothing additional.
-- The first successful Order remains unchanged.
+### Slow confirmation and timeout
 
-## Tests
+- Preserve the existing bounded polling interval and 60-second maximum.
+- After approximately 10–15 seconds, add calm supporting copy such as:
+  `This is taking a little longer than usual.`
+- When bounded polling ends without a terminal status:
+  - Do not claim that payment failed.
+  - Show a safe “still confirming” message.
+  - Provide `Check Again` and `Return Home`.
+- `Check Again` starts a fresh bounded read-only polling cycle.
+- It must not create a Checkout Session, charge, Order, Customer, or any other mutation.
 
-Add focused regression coverage for:
+## Motion and accessibility
 
-- Same normalized email with a different Stripe Customer ID.
-- Existing Customer with a null Stripe Customer ID.
-- Existing Customer ID preservation.
-- Rejected-event recovery.
-- Invalid rejected event remaining rejected.
-- Duplicate and concurrent replay idempotency.
-- Transaction rollback.
+- Respect `prefers-reduced-motion`.
+- Reduced-motion mode uses a static postmark and immediate content changes without rotation, drawing, bouncing, or translation.
+- Keep meaningful status text available independently of animation.
+- Use an appropriate polite live region for processing and confirmed status updates.
+- Decorative animation must be hidden from assistive technology.
+- Do not unexpectedly move keyboard focus.
+- Preserve visible focus states.
+
+## Visual requirements
+
+- Match the existing postcard, hand-drawn, 2.5D art direction.
+- Do not use a generic circular web spinner.
+- Keep typography, colors, borders, shadows, spacing, and button styling consistent with the existing result pages and checkout modal.
+- Preserve day/night presentation where already supported.
+- Verify desktop 1440×900, mobile 390×844, and landscape 844×390 without overflow or clipped actions.
+
+## Security and behavior constraints
+
+- Preserve the existing cookie-authenticated, identifier-free status flow.
+- Do not add IDs, Stripe data, email, PII, query parameters, or payment details to the DOM, URL, logs, or browser storage.
+- Do not change status endpoint requests or response parsing.
+- Do not change polling authority or introduce client-side payment assumptions.
+- No dependency, environment, schema, migration, Payload, Stripe, webhook, Storage, Email Outbox, or admin changes.
+
+## Focused verification
+
+Add deterministic focused coverage for:
+
+- Processing loader hidden during the initial delay.
+- Loader appearing after the delay.
+- Confirmation before the delay without loader flash.
+- Confirmation during any loader cycle.
+- Confirmed stamp and content transition.
+- No artificial confirmation delay.
+- Slow-confirmation copy.
+- Polling timeout actions.
+- Check Again starting only a new read-only polling cycle.
+- Reduced-motion behavior.
+- No duplicate or overlapping polling.
+- Cleanup and request abort on unmount.
+- Responsive layout and keyboard accessibility.
 
 Run only:
 
-- Focused fulfillment/webhook/outbox tests
-- Focused database lifecycle
+- Focused result-page tests
+- Focused mocked browser checks
 - TypeScript
 - Changed-file ESLint
 - One production build
 - git diff --check
 
-Do not run scene, viewport, Storage cleanup, full browser, or unrelated acceptance suites.
+Do not run real Stripe, webhook, database, Storage, Email Outbox, checkout lifecycle, scene, or unrelated full regression suites.
 
-## Constraints
+## Repository rules
 
-- No schema or migration unless inspection proves it unavoidable.
-- No dependency or environment changes.
-- No frontend changes.
-- No Checkout Session parameter changes.
-- No email provider or worker.
-- No manual database repair.
-- No live-mode Stripe activity.
-- Do not print secrets, webhook payloads, addresses, or customer PII.
-- Preserve mission.md and unrelated user changes.
-- No commit or push.
+- Preserve unrelated work and mission.md.
+- Do not modify AGENTS.md.
+- Do not commit or push.
+- Stop task-created servers and browsers.

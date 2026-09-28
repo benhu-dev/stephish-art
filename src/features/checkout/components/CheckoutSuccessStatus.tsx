@@ -8,6 +8,7 @@ import {
   type CheckoutStatusResponse,
   type CheckoutStatusViewState,
 } from "../checkoutStatusPolling";
+import { createCheckoutResultPresentation } from "../checkoutResultPresentation";
 import styles from "./checkout-result.module.css";
 
 const statusEndpoint = "/api/storefront/checkout-intents/current/status";
@@ -55,45 +56,106 @@ const dollars = (amountCents: number) =>
   }).format(amountCents / 100);
 
 export function CheckoutSuccessStatus() {
+  const [loaderVisible, setLoaderVisible] = useState(false);
+  const [pollingCycle, setPollingCycle] = useState(0);
+  const [slow, setSlow] = useState(false);
   const [state, setState] = useState<CheckoutStatusViewState>({
     phase: "loading",
   });
 
   useEffect(() => {
     window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
+  useEffect(() => {
+    const presentation = createCheckoutResultPresentation({
+      onLoaderVisible: () => setLoaderVisible(true),
+      onSlow: () => setSlow(true),
+    });
     const poller = createCheckoutStatusPoller({
-      onState: setState,
+      onState: (nextState) => {
+        setState(nextState);
+        if (nextState.phase !== "loading" && nextState.phase !== "processing") {
+          presentation.stop();
+        }
+      },
       readStatus,
     });
+    presentation.start();
     poller.start();
-    return () => poller.stop();
-  }, []);
+    return () => {
+      presentation.stop();
+      poller.stop();
+    };
+  }, [pollingCycle]);
+
+  const checkAgain = () => {
+    setLoaderVisible(false);
+    setSlow(false);
+    setState({ phase: "loading" });
+    setPollingCycle((current) => current + 1);
+  };
+
+  const confirming = state.phase === "loading" || state.phase === "processing";
 
   return (
     <section aria-atomic="true" aria-live="polite" className={styles.status}>
-      {state.phase === "loading" ? (
-        <>
-          <h1 className={styles.title}>Confirming your payment…</h1>
-          <p>Please keep this page open while we check your order.</p>
-        </>
-      ) : null}
-      {state.phase === "processing" ? (
-        <>
-          <h1 className={styles.title}>Your payment is processing.</h1>
-          <p>Your payment confirmation may take a moment. We’ll check again automatically.</p>
-        </>
+      {confirming ? (
+        <div className={styles.processingContent}>
+          <h1 aria-label="Confirming your order…" className={styles.title}>
+            Confirming your order
+            <span aria-hidden="true" className={styles.headingEllipsis}>
+              <span>.</span>
+              <span>.</span>
+              <span>.</span>
+            </span>
+          </h1>
+          <p>Your payment was submitted. We’re finalizing your postcard order now.</p>
+          <div className={styles.processingStage}>
+            {loaderVisible ? (
+              <div aria-hidden="true" className={styles.processingPostmark}>
+                <svg
+                  className={styles.postmarkRing}
+                  focusable="false"
+                  viewBox="0 0 100 100"
+                >
+                  <circle
+                    className={styles.postmarkRingStroke}
+                    cx="50"
+                    cy="50"
+                    pathLength="100"
+                    r="43"
+                  />
+                </svg>
+                <span className={styles.processingPostmarkLabel}>
+                  <strong>NYC</strong>
+                  <small>POST</small>
+                </span>
+              </div>
+            ) : null}
+          </div>
+          {slow ? (
+            <p className={styles.slowMessage}>This is taking a little longer than usual.</p>
+          ) : null}
+        </div>
       ) : null}
       {state.phase === "confirmed" ? (
-        <>
-          <h1 className={styles.title}>Your postcard order is confirmed.</h1>
-          <p>Thank you for supporting handmade art.</p>
-          <dl className={styles.summary}>
-            <div><dt>Postcard</dt><dd>{dollars(state.subtotalAmountCents)}</dd></div>
-            <div><dt>Shipping</dt><dd>{dollars(state.shippingAmountCents)}</dd></div>
-            <div className={styles.total}><dt>Total</dt><dd>{dollars(state.totalAmountCents)}</dd></div>
-          </dl>
-          <Link className={styles.secondaryAction} href="/">Return home</Link>
-        </>
+        <div className={styles.confirmedState}>
+          <div aria-hidden="true" className={styles.confirmedStamp}>
+            <span>NYC</span>
+            <strong>CONFIRMED</strong>
+          </div>
+          <div className={styles.confirmedContent}>
+            <h1 className={styles.title}>Your postcard order is confirmed.</h1>
+            <p>Thank you for supporting handmade art.</p>
+            <dl className={styles.summary}>
+              <div><dt>Postcard</dt><dd>{dollars(state.subtotalAmountCents)}</dd></div>
+              <div><dt>Shipping</dt><dd>{dollars(state.shippingAmountCents)}</dd></div>
+              <div className={styles.total}><dt>Total</dt><dd>{dollars(state.totalAmountCents)}</dd></div>
+            </dl>
+            <Link className={styles.secondaryAction} href="/">Return Home</Link>
+          </div>
+        </div>
       ) : null}
       {state.phase === "expired" ? (
         <>
@@ -118,11 +180,14 @@ export function CheckoutSuccessStatus() {
       ) : null}
       {state.phase === "timeout" ? (
         <>
-          <h1 className={styles.title}>Confirmation is taking longer than expected.</h1>
-          <p>It is safe to refresh this page and check again.</p>
-          <button className={styles.primaryAction} onClick={() => window.location.reload()} type="button">
-            Refresh this page
-          </button>
+          <h1 className={styles.title}>We’re still confirming your order.</h1>
+          <p>Your payment may still be complete. You can safely check again here.</p>
+          <div className={styles.actions}>
+            <button className={styles.primaryAction} onClick={checkAgain} type="button">
+              Check Again
+            </button>
+            <Link className={styles.secondaryAction} href="/">Return Home</Link>
+          </div>
         </>
       ) : null}
     </section>

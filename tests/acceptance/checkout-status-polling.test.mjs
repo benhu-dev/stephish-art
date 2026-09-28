@@ -6,6 +6,11 @@ import {
   CHECKOUT_STATUS_POLL_LIMIT_MS,
   createCheckoutStatusPoller,
 } from "../../src/features/checkout/checkoutStatusPolling.ts";
+import {
+  CHECKOUT_LOADER_DELAY_MS,
+  CHECKOUT_SLOW_MESSAGE_DELAY_MS,
+  createCheckoutResultPresentation,
+} from "../../src/features/checkout/checkoutResultPresentation.ts";
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -82,6 +87,112 @@ test("processing alone polls at a bounded interval and confirmation stops it", a
 
   await clock.tick(CHECKOUT_STATUS_POLL_INTERVAL_MS);
   assert.equal(states.at(-1).phase, "confirmed");
+  assert.equal(clock.pending(), 0);
+  poller.stop();
+});
+
+test("fast confirmation publishes immediately without a polling timer", async () => {
+  const clock = fakeClock();
+  const states = [];
+  const poller = createCheckoutStatusPoller({
+    clock,
+    onState: (state) => states.push(state),
+    readStatus: async () => ({
+      currency: "usd",
+      shippingAmountCents: 100,
+      state: "confirmed",
+      subtotalAmountCents: 800,
+      totalAmountCents: 900,
+    }),
+    visibility: fakeVisibility(),
+  });
+
+  poller.start();
+  await flush();
+  assert.deepEqual(states.map(({ phase }) => phase), ["loading", "confirmed"]);
+  assert.equal(clock.pending(), 0);
+  poller.stop();
+});
+
+test("a normal three-second confirmation remains interruptible", async () => {
+  const clock = fakeClock();
+  const states = [];
+  let requests = 0;
+  const poller = createCheckoutStatusPoller({
+    clock,
+    onState: (state) => states.push(state),
+    readStatus: () => {
+      requests += 1;
+      if (requests === 1) {
+        return new Promise((resolve) => {
+          clock.setTimeout(() => resolve({ state: "processing" }), 1_000);
+        });
+      }
+      return Promise.resolve({
+        currency: "usd",
+        shippingAmountCents: 100,
+        state: "confirmed",
+        subtotalAmountCents: 800,
+        totalAmountCents: 900,
+      });
+    },
+    visibility: fakeVisibility(),
+  });
+
+  poller.start();
+  await clock.tick(1_000);
+  assert.equal(states.at(-1).phase, "processing");
+  await clock.tick(2_000);
+  assert.equal(states.at(-1).phase, "confirmed");
+  assert.equal(requests, 2);
+  assert.equal(clock.pending(), 0);
+  poller.stop();
+});
+
+test("slow confirmation interrupts a later loader cycle after calm copy appears", async () => {
+  const clock = fakeClock();
+  const events = [];
+  let requests = 0;
+  const presentation = createCheckoutResultPresentation({
+    clock,
+    onLoaderVisible: () => events.push("loader"),
+    onSlow: () => events.push("slow"),
+  });
+  const poller = createCheckoutStatusPoller({
+    clock,
+    onState: (state) => {
+      events.push(state.phase);
+      if (state.phase === "confirmed") presentation.stop();
+    },
+    readStatus: async () => {
+      requests += 1;
+      return requests < 8
+        ? { state: "processing" }
+        : {
+            currency: "usd",
+            shippingAmountCents: 100,
+            state: "confirmed",
+            subtotalAmountCents: 800,
+            totalAmountCents: 900,
+          };
+    },
+    visibility: fakeVisibility(),
+  });
+
+  presentation.start();
+  poller.start();
+  await flush();
+  await clock.tick(CHECKOUT_LOADER_DELAY_MS);
+  assert.equal(events.includes("loader"), true);
+  await clock.tick(CHECKOUT_STATUS_POLL_INTERVAL_MS - CHECKOUT_LOADER_DELAY_MS);
+  for (let elapsed = CHECKOUT_STATUS_POLL_INTERVAL_MS; elapsed < CHECKOUT_SLOW_MESSAGE_DELAY_MS; elapsed += CHECKOUT_STATUS_POLL_INTERVAL_MS) {
+    await clock.tick(CHECKOUT_STATUS_POLL_INTERVAL_MS);
+  }
+  assert.equal(events.at(-1), "processing");
+  assert.equal(events.includes("slow"), true);
+
+  await clock.tick(CHECKOUT_STATUS_POLL_INTERVAL_MS);
+  assert.equal(events.at(-1), "confirmed");
   assert.equal(clock.pending(), 0);
   poller.stop();
 });

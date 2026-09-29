@@ -1,188 +1,119 @@
-# Phase 2 — Unit 2.17: Email Outbox Delivery
+# Phase 2 — Unit 2.17.1: New York Time Policy
 
 ## Goal
 
-Deliver the two Email Outbox jobs created during paid Stripe fulfillment:
+Establish one explicit business-time policy:
 
-1. Customer order confirmation
-2. Artist new-order notification
+- PostgreSQL continues storing absolute timestamps in UTC.
+- Artist/business-facing dates use `America/New_York`.
+- The public day/night scene uses New York time regardless of visitor location.
 
-Use Resend with reliable retries and duplicate protection. Normal paid orders should attempt delivery immediately after fulfillment. A protected Vercel Cron route provides fallback processing.
+Complete Unit 2.17.1 only.
 
-Complete Unit 2.17 only. Do not implement shipping updates, tracking emails, refunds, marketing email, Resend webhooks, bounce handling, or deployment.
+## Confirmed decisions
 
-## Starting contract
+- Do not rewrite existing database timestamps.
+- Do not change the PostgreSQL or Supabase session timezone.
+- Do not attempt to change how Supabase Table Editor displays timestamps.
+- Use the IANA zone `America/New_York`, never hard-coded EST, EDT, UTC-5, or UTC-4.
+- Preserve the scene’s existing day/night hour thresholds.
+- Preserve `?theme=day` and `?theme=night` overrides.
+- Database and provider timestamps remain authoritative UTC instants.
 
-Unit 2.16 already atomically creates exactly two Email Outbox jobs for each newly fulfilled Order. Replays do not create duplicates.
+## In scope
 
-Existing environment is configured locally:
+### Shared time policy
 
-- RESEND_API_KEY
-- EMAIL_FROM
-- EMAIL_REPLY_TO
-- ARTIST_ORDER_EMAIL
-- EMAIL_DELIVERY_ENABLED
-- CRON_SECRET
+Create a small deterministic server-safe utility for:
 
-Do not print, rewrite, expose, or commit `.env.local` or secret values.
+- Converting an instant into New York calendar/time parts.
+- Determining day/night using the existing scene thresholds.
+- Formatting artist/business-facing timestamps in New York time when the current application displays such timestamps.
+- Dependency-injected or explicit `Date` input for testing.
 
-## Required behavior
+Use platform `Intl` APIs unless the installed runtime demonstrably requires something else. Do not add a date library.
 
-### 1. Environment and provider
+### Public scene
 
-- Keep all Resend credentials server-only.
-- Parse `EMAIL_DELIVERY_ENABLED` strictly.
-- When delivery is disabled, do not contact Resend or mutate jobs as sent.
-- Missing or invalid required delivery configuration must fail safely with no secret exposure.
-- Use Resend’s HTTPS API directly unless the official SDK is clearly necessary.
-- Do not add a general email framework or unrelated dependency.
-- Set one stable Resend idempotency key per Email Outbox job.
-- Never reuse one idempotency key across the two job kinds.
+Update automatic scene theme resolution so:
 
-### 2. Email content
+- Visitor device timezone has no effect.
+- The same instant produces the same theme in Los Angeles, New York, Taiwan, or UTC environments.
+- Valid query overrides take precedence.
+- Invalid override values fall back to automatic New York-time resolution.
+- Existing reduced-motion, responsive, and manual override behavior remains unchanged.
+- A page left open across an existing day/night boundary can update without reload if the current implementation already supports automatic re-evaluation; otherwise add the smallest bounded timer necessary.
 
-Create both plain-text and responsive HTML versions.
+Avoid hydration mismatch, timer leaks, or repeated intervals.
 
-Customer confirmation:
+### Existing business-facing output
 
-- Recipient comes only from the immutable paid Order snapshot.
-- Subject: `Your postcard order is confirmed`
-- Include customer name, subtotal, shipping, total, shipping destination, reference-photo count, and artist note when present.
-- Explain that the artwork will be prepared and another update can be sent after shipment.
-- Reply-To uses `EMAIL_REPLY_TO`.
+Inspect current email/result-page formatting:
 
-Artist notification:
+- If an existing timestamp is shown to the artist or customer, format it explicitly and label it clearly using New York business time.
+- If no timestamp is currently displayed, do not add new UI or email content solely for this Unit.
+- Do not change Stripe, Resend, Cron, Order, or cleanup timestamps.
 
-- Recipient comes only from `ARTIST_ORDER_EMAIL`.
-- Subject: `New paid postcard order`
-- Include customer name/email, shipping destination, subtotal, shipping, total, reference-photo count, and artist note when present.
-- Do not attach photos or expose Storage URLs.
-- Mention that full private order details and uploads are available in the authenticated Payload admin.
+### Documentation
 
-For both:
+Document briefly:
 
-- Escape all user-controlled values.
-- Do not include Stripe IDs, Checkout Intent IDs, cookies, access tokens, Storage keys, signed URLs, webhook data, or secrets.
-- Do not use remote tracking images.
-- Keep styling aligned with the existing warm postcard/art direction, but keep email markup simple and broadly compatible.
+- Database timestamps are UTC.
+- Business timezone is `America/New_York`.
+- Supabase Table Editor may continue showing UTC.
+- Current Vercel Cron expressions remain UTC and are unchanged.
 
-### 3. Reliable outbox processor
+## Acceptance criteria
 
-Implement a bounded processor that:
+1. Database schema, stored timestamps, existing rows, and migrations remain unchanged.
+2. Automatic day/night resolution uses `America/New_York`.
+3. Host/browser timezone does not change the result for the same instant.
+4. Existing day/night hour thresholds remain unchanged.
+5. `?theme=day` and `?theme=night` still override automatic behavior.
+6. Invalid query values do not grant a new theme mode.
+7. At least one winter EST instant and one summer EDT instant resolve correctly.
+8. DST behavior is derived from the IANA timezone rather than a fixed offset.
+9. Timer/listener cleanup prevents updates after unmount.
+10. Reduced-motion and existing scene behavior remain intact.
+11. No new dependency, environment variable, schema, migration, database mutation, or provider call is introduced.
 
-- Loads authoritative Order data only after claiming an eligible job.
-- Uses row locking or an equivalent atomic claim so concurrent runs cannot intentionally send the same job.
-- Never calls Resend inside a database transaction.
-- Marks a job sent only after Resend accepts it.
-- Stores only necessary provider/reconciliation metadata.
-- Increments attempts and records a safe failure classification without storing raw provider bodies or PII.
-- Returns retryable jobs to an eligible state with bounded backoff.
-- Stops retrying after a reasonable maximum and marks the job terminally failed.
-- Recovers stale processing leases.
-- Processes a small bounded batch per invocation.
-- Treats already-sent jobs as terminal.
-- Uses the existing schema where sufficient. If lease/retry fields are missing, add only the minimum required fields and one reviewed migration.
+## Required verification
 
-Resend idempotency is an additional safeguard, not a replacement for database concurrency control. Resend idempotency keys expire after 24 hours, so database state remains authoritative.
+Keep verification focused:
 
-### 4. Immediate delivery
+1. Red-first deterministic timezone/theme tests.
+2. Focused theme and query-override tests.
+3. One browser check with a mocked instant proving New York-based automatic selection.
+4. One browser query-override check.
+5. TypeScript.
+6. ESLint on changed handwritten files.
+7. One production build.
+8. `git diff --check`.
 
-After a newly paid fulfillment transaction commits:
+Do not run Stripe, Storage, Resend, database lifecycle, checkout lifecycle, upload, email, full viewport, or broad acceptance suites.
 
-- Attempt delivery only for that Order’s two Outbox jobs.
-- Perform email delivery outside the fulfillment transaction.
-- Email failure must not roll back or invalidate a successfully paid Order.
-- Preserve the existing safe Stripe webhook acknowledgement behavior.
-- Webhook replay must not create or resend completed jobs.
-- Do not delay the checkout success status on email delivery.
+## Out of scope
 
-### 5. Fallback entrypoints
-
-Add:
-
-- A one-shot CLI command for local/manual processing.
-- A protected internal Vercel Cron route using the existing exact Bearer `CRON_SECRET` contract and timing-safe comparison.
-- Safe aggregate JSON output only: scanned, sent, retried, failed, skipped.
-- No recipient, subject, body, provider ID, Order ID, or error body in route responses or logs.
-
-Add one daily fallback schedule compatible with Vercel Hobby. Immediate post-webhook delivery remains the primary path; the daily job only recovers failures/stale jobs.
-
-Ensure CLI and route processes terminate naturally and do not leak Payload/PostgreSQL handles.
-
-### 6. Access and privacy
-
-- Email Outbox remains administrator-read-only through Payload.
-- No public endpoint may trigger arbitrary email or choose a recipient.
-- Cron requests with missing/invalid authorization perform no work.
-- Reject query-string overrides.
-- Never log recipients, addresses, notes, email bodies, Resend responses, secrets, or PII.
-- Do not expose delivery state through storefront APIs.
-
-### 7. Tests
-
-Add focused tests for:
-
-- Exact customer and artist recipients
-- HTML/text template escaping
-- Exact monetary and shipping rendering
-- Artist note present/absent
-- Stable distinct idempotency keys
-- Successful state transition
-- Transient retry and terminal failure
-- Disabled/missing configuration
-- Concurrent claims
-- Stale lease recovery
-- Already-sent replay
-- Immediate post-fulfillment attempt outside the transaction
-- Provider failure preserving the paid Order
-- Cron authorization and safe output
-- CLI natural exit
-
-Run one isolated real Resend test using synthetic data:
-
-- Send exactly one customer confirmation and one artist notification to the configured test addresses.
-- Use clearly marked test subjects if necessary.
-- Do not perform a real or Stripe Sandbox payment solely for this test.
-- Remove only uniquely identified synthetic database fixtures afterward.
-- Email messages already accepted by Resend cannot be deleted; report their final provider status without printing provider IDs.
-
-## Validation
-
-Keep validation focused:
-
-1. Red-first focused tests
-2. Focused Email Outbox/provider tests
-3. Isolated database lifecycle
-4. One authorized real Resend two-email test
-5. TypeScript
-6. Changed-file ESLint
-7. One production build
-8. `git diff --check`
-
-Do not run full scene, upload, Storage, Stripe Sandbox, viewport, or broad acceptance suites unless a changed dependency requires them.
-
-## Excluded
-
-Do not add:
-
-- Shipment or tracking email
-- Refund/dispute email
-- Marketing/unsubscribe systems
-- Resend inbound email or webhooks
-- Bounce/complaint processing
-- Attachments or public upload links
-- Admin dashboard redesign
-- Customer accounts
-- Deployment
-- Live Stripe payment
-- Unrelated refactors
+- Changing Supabase Table Editor timezone
+- Database timestamp conversion or backfill
+- Payload Admin customization
+- Custom timezone selector
+- Geolocation
+- Sunrise/sunset APIs
+- Weather-based themes
+- Cron schedule changes
+- Refund handling
+- Abuse protection
+- Upload hardening
+- Public visual redesign
+- New animations
 
 ## Repository rules
 
-- Inspect starting HEAD and working tree first.
-- Preserve `mission.md` and all user-owned changes.
+- Inspect starting HEAD and working tree once.
+- Treat the updated `AGENTS.md` and active `mission.md` as intentional.
+- Preserve all user-owned changes.
 - Do not modify `.env.local`.
-- Update `.env.example` with safe placeholders only.
-- No commit or push.
-- Stop task-created servers and browser processes.
-- Report starting/ending HEAD, changed files, validation, real-email count/status, database cleanup, security review, and remaining limitations.
+- Do not commit or push.
+- Stop task-created processes.
+- Report the exact theme threshold found in existing code and confirm it was preserved.

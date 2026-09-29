@@ -1,21 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { calculateTheme, type SceneTheme } from "../lib/theme";
+import { startSceneThemeMonitor, type SceneTheme } from "../lib/theme";
 
 export function useSceneTheme() {
   const [theme, setTheme] = useState<SceneTheme>("day");
-  useEffect(() => {
-    const update = () => setTheme(calculateTheme(
-      new Date().getHours(), new URLSearchParams(window.location.search).get("theme"),
-    ));
-    update();
-    const timer = window.setInterval(update, 30_000);
-    window.addEventListener("popstate", update);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("popstate", update);
-    };
-  }, []);
+  useEffect(
+    () =>
+      startSceneThemeMonitor({
+        addPopstateListener(callback) {
+          window.addEventListener("popstate", callback);
+          return () => window.removeEventListener("popstate", callback);
+        },
+        now: () => new Date(),
+        onTheme: setTheme,
+        readOverride: () =>
+          new URLSearchParams(window.location.search).get("theme"),
+        setRecurringUpdate(callback, milliseconds) {
+          const timer = window.setInterval(callback, milliseconds);
+          return () => window.clearInterval(timer);
+        },
+      }),
+    [],
+  );
   return theme;
 }

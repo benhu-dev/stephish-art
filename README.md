@@ -131,17 +131,24 @@ manually with:
 npm run email:deliver
 ```
 
+## Time policy
+
+PostgreSQL stores absolute timestamps in UTC. Business-facing presentation and
+calendar decisions use the IANA zone `America/New_York`, including daylight
+saving changes. Supabase Table Editor may continue to display stored timestamps
+in UTC. Vercel Cron expressions are also UTC and remain unchanged.
+
 ## Scene and timing
 
 The machine, camera, and park stay fixed in a sticky viewport across a 360svh scroll container. Scroll down to insert a coin and print a postcard; scroll up to reverse. Anime.js controls the timeline using its [scroll synchronization](https://animejs.com/documentation/events/onscroll/scrollobserver-synchronisation-modes/).
 
 - `src/features/postcard-machine/components/`: scene, park, machine, coin, and postcard presentation.
-- `src/features/postcard-machine/hooks/`: scroll/ambient animation lifecycle and local-time theme updates.
+- `src/features/postcard-machine/hooks/`: scroll/ambient animation lifecycle and New York-time theme updates.
 - `src/features/postcard-machine/lib/animation-config.ts`: stage boundaries and scroll length. Timeline units map to scroll progress, not elapsed milliseconds.
 - `src/features/postcard-machine/lib/theme.ts`: pure theme calculation.
 - `src/features/postcard-machine/scene.css`: scene composition, theme colors, and responsive framing.
 
-Local time selects day at 06:00–17:59 and night at 18:00–05:59, refreshed every 30 seconds. `/?theme=day` and `/?theme=night` override the clock for testing. Reduced motion removes ambient animation and uses discrete coin/postcard states. Background animation pauses while the document is hidden. No extra dependencies, remote fonts, or remote assets are required.
+New York time (`America/New_York`) selects day at 06:00–17:59 and night at 18:00–05:59, refreshed every 30 seconds. `/?theme=day` and `/?theme=night` override the clock for testing. Reduced motion removes ambient animation and uses discrete coin/postcard states. Background animation pauses while the document is hidden. No extra dependencies, remote fonts, or remote assets are required.
 
 ## Verify
 
@@ -156,7 +163,7 @@ npm run build
 node scripts/check-scene.mjs
 ```
 
-The check covers 1440×900, 390×844, and 844×390, both themes, scroll reversal, machine bounds, local-time boundaries, override precedence, reduced motion, and browser errors. Screenshots go to the ignored `.next/scene-checks/` folder.
+The check covers 1440×900, 390×844, and 844×390, both themes, scroll reversal, machine bounds, New York-time boundaries, override precedence, reduced motion, and browser errors. Screenshots go to the ignored `.next/scene-checks/` folder.
 
 Manually verify:
 

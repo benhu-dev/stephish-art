@@ -116,15 +116,28 @@ try {
       console.log(`PASS ${width}×${height} ${theme}: framing, masking, printing, fixed scene, reversal`);
     }
   }
-  for (const [hour, theme] of [[5, "night"], [6, "day"], [17, "day"], [18, "night"]]) {
-    const preload = await send("Page.addScriptToEvaluateOnNewDocument", { source: `Date.prototype.getHours = () => ${hour};` });
+  for (const [instant, theme] of [
+    ["2027-01-15T10:00:00.000Z", "night"],
+    ["2027-01-15T11:00:00.000Z", "day"],
+    ["2027-01-15T22:00:00.000Z", "day"],
+    ["2027-01-15T23:00:00.000Z", "night"],
+  ]) {
+    const preload = await send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      const NativeDate = Date;
+      const fixedTime = NativeDate.parse(${JSON.stringify(instant)});
+      class FixedDate extends NativeDate {
+        constructor(...args) { super(...(args.length === 0 ? [fixedTime] : args)); }
+        static now() { return fixedTime; }
+      }
+      globalThis.Date = FixedDate;
+    })();` });
     await navigate();
     assert.equal((await scroll(0)).theme, theme);
     await navigate(`?theme=${theme === "day" ? "night" : "day"}`);
-    assert.notEqual((await scroll(0)).theme, theme, "Query override wins over local time");
+    assert.notEqual((await scroll(0)).theme, theme, "Query override wins over automatic time");
     await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: preload.identifier });
   }
-  console.log("PASS automatic local-time boundaries and query override precedence");
+  console.log("PASS automatic New York-time boundaries and query override precedence");
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
   await navigate("?theme=night");
   const reducedStart = await scroll(0);

@@ -102,6 +102,35 @@ Execute one bounded batch manually:
 npm run checkout:cleanup -- --execute
 ```
 
+## Transactional order email
+
+Paid fulfillment atomically creates customer-confirmation and artist-notification
+jobs, then attempts only those two jobs after the payment transaction commits.
+Delivery failure never rolls back a paid order. Configure these server-only names:
+
+```text
+EMAIL_DELIVERY_ENABLED
+RESEND_API_KEY
+EMAIL_FROM
+EMAIL_REPLY_TO
+ARTIST_ORDER_EMAIL
+```
+
+`EMAIL_DELIVERY_ENABLED` accepts exactly `true` or `false`. When false, processing
+does not contact Resend or mark jobs sent. `EMAIL_FROM` must use the verified
+sending domain. Messages contain text and simple responsive HTML, but no uploads,
+Storage URLs, tracking images, payment identifiers, or secrets.
+
+Vercel Cron calls `/api/internal/cron/email-outbox` once daily at **10:15 UTC**
+with the same exact `CRON_SECRET` Bearer contract as checkout cleanup. The route
+rejects query overrides and returns only aggregate counts. Immediate post-webhook
+delivery is primary; cron recovers retryable and stale jobs. Run one bounded batch
+manually with:
+
+```sh
+npm run email:deliver
+```
+
 ## Scene and timing
 
 The machine, camera, and park stay fixed in a sticky viewport across a 360svh scroll container. Scroll down to insert a coin and print a postcard; scroll up to reverse. Anime.js controls the timeline using its [scroll synchronization](https://animejs.com/documentation/events/onscroll/scrollobserver-synchronisation-modes/).

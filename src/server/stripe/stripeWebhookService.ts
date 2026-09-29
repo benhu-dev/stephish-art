@@ -22,6 +22,10 @@ import {
 } from "./stripeWebhookSession";
 
 type StripeWebhookServiceInput = {
+  attemptOrderEmailDelivery?: (
+    orderId: number,
+    request: PayloadRequest,
+  ) => Promise<unknown>;
   event: Stripe.Event;
   gateway: StripeWebhookGateway;
   getRequest: () => Promise<PayloadRequest>;
@@ -53,6 +57,7 @@ const envelopeFor = (
 };
 
 export const processStripeWebhookEvent = async ({
+  attemptOrderEmailDelivery,
   event,
   gateway,
   getRequest,
@@ -115,6 +120,7 @@ export const processStripeWebhookEvent = async ({
       });
     }
     return fulfillPaidStripeSession({
+      attemptOrderEmailDelivery,
       event: envelope,
       now,
       probe,

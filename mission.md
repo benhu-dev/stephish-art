@@ -1,109 +1,188 @@
-# Phase 2 — Unit 2.16.2: Checkout Confirmation Transition
+# Phase 2 — Unit 2.17: Email Outbox Delivery
 
 ## Goal
 
-Polish the existing `/checkout/success` experience with a short, interruptible NYC postmark animation while preserving the existing status polling and payment behavior.
+Deliver the two Email Outbox jobs created during paid Stripe fulfillment:
 
-This Unit is presentation-only. Do not change Stripe, webhook fulfillment, database records, status contracts, or payment logic.
+1. Customer order confirmation
+2. Artist new-order notification
 
-## Required experience
+Use Resend with reliable retries and duplicate protection. Normal paid orders should attempt delivery immediately after fulfillment. A protected Vercel Cron route provides fallback processing.
 
-### Processing
+Complete Unit 2.17 only. Do not implement shipping updates, tracking emails, refunds, marketing email, Resend webhooks, bounce handling, or deployment.
 
-When the status is processing:
+## Starting contract
 
-- Show the heading: `Confirming your order…`
-- Show supporting copy explaining that the payment was submitted and the order is being finalized.
-- Reuse or extend the existing NYC postmark styling as the loading indicator.
-- Delay the animated loader’s visibility by approximately 150ms to prevent flashing during extremely fast confirmation.
-- Use a short seamless loop, approximately 0.8–1.2 seconds, that looks intentional at any interruption point.
-- Do not impose a minimum processing duration.
-- Do not delay or block polling.
+Unit 2.16 already atomically creates exactly two Email Outbox jobs for each newly fulfilled Order. Replays do not create duplicates.
 
-### Confirmed
+Existing environment is configured locally:
 
-As soon as the existing status endpoint returns confirmed:
+- RESEND_API_KEY
+- EMAIL_FROM
+- EMAIL_REPLY_TO
+- ARTIST_ORDER_EMAIL
+- EMAIL_DELIVERY_ENABLED
+- CRON_SECRET
 
-- Update the application state immediately.
-- Stop the processing animation.
-- Trigger a pink `CONFIRMED` postmark effect.
-- Animate the stamp and content transition over approximately 350–500ms.
-- The animation must be purely visual and must not delay the confirmed state in JavaScript.
-- Crossfade the existing confirmed heading, monetary summary, and `Return Home` action into the same card.
-- Do not automatically redirect to the homepage.
+Do not print, rewrite, expose, or commit `.env.local` or secret values.
 
-If confirmation arrives before the loader’s 150ms appearance delay, skip the loader and show the confirmed transition directly.
+## Required behavior
 
-### Slow confirmation and timeout
+### 1. Environment and provider
 
-- Preserve the existing bounded polling interval and 60-second maximum.
-- After approximately 10–15 seconds, add calm supporting copy such as:
-  `This is taking a little longer than usual.`
-- When bounded polling ends without a terminal status:
-  - Do not claim that payment failed.
-  - Show a safe “still confirming” message.
-  - Provide `Check Again` and `Return Home`.
-- `Check Again` starts a fresh bounded read-only polling cycle.
-- It must not create a Checkout Session, charge, Order, Customer, or any other mutation.
+- Keep all Resend credentials server-only.
+- Parse `EMAIL_DELIVERY_ENABLED` strictly.
+- When delivery is disabled, do not contact Resend or mutate jobs as sent.
+- Missing or invalid required delivery configuration must fail safely with no secret exposure.
+- Use Resend’s HTTPS API directly unless the official SDK is clearly necessary.
+- Do not add a general email framework or unrelated dependency.
+- Set one stable Resend idempotency key per Email Outbox job.
+- Never reuse one idempotency key across the two job kinds.
 
-## Motion and accessibility
+### 2. Email content
 
-- Respect `prefers-reduced-motion`.
-- Reduced-motion mode uses a static postmark and immediate content changes without rotation, drawing, bouncing, or translation.
-- Keep meaningful status text available independently of animation.
-- Use an appropriate polite live region for processing and confirmed status updates.
-- Decorative animation must be hidden from assistive technology.
-- Do not unexpectedly move keyboard focus.
-- Preserve visible focus states.
+Create both plain-text and responsive HTML versions.
 
-## Visual requirements
+Customer confirmation:
 
-- Match the existing postcard, hand-drawn, 2.5D art direction.
-- Do not use a generic circular web spinner.
-- Keep typography, colors, borders, shadows, spacing, and button styling consistent with the existing result pages and checkout modal.
-- Preserve day/night presentation where already supported.
-- Verify desktop 1440×900, mobile 390×844, and landscape 844×390 without overflow or clipped actions.
+- Recipient comes only from the immutable paid Order snapshot.
+- Subject: `Your postcard order is confirmed`
+- Include customer name, subtotal, shipping, total, shipping destination, reference-photo count, and artist note when present.
+- Explain that the artwork will be prepared and another update can be sent after shipment.
+- Reply-To uses `EMAIL_REPLY_TO`.
 
-## Security and behavior constraints
+Artist notification:
 
-- Preserve the existing cookie-authenticated, identifier-free status flow.
-- Do not add IDs, Stripe data, email, PII, query parameters, or payment details to the DOM, URL, logs, or browser storage.
-- Do not change status endpoint requests or response parsing.
-- Do not change polling authority or introduce client-side payment assumptions.
-- No dependency, environment, schema, migration, Payload, Stripe, webhook, Storage, Email Outbox, or admin changes.
+- Recipient comes only from `ARTIST_ORDER_EMAIL`.
+- Subject: `New paid postcard order`
+- Include customer name/email, shipping destination, subtotal, shipping, total, reference-photo count, and artist note when present.
+- Do not attach photos or expose Storage URLs.
+- Mention that full private order details and uploads are available in the authenticated Payload admin.
 
-## Focused verification
+For both:
 
-Add deterministic focused coverage for:
+- Escape all user-controlled values.
+- Do not include Stripe IDs, Checkout Intent IDs, cookies, access tokens, Storage keys, signed URLs, webhook data, or secrets.
+- Do not use remote tracking images.
+- Keep styling aligned with the existing warm postcard/art direction, but keep email markup simple and broadly compatible.
 
-- Processing loader hidden during the initial delay.
-- Loader appearing after the delay.
-- Confirmation before the delay without loader flash.
-- Confirmation during any loader cycle.
-- Confirmed stamp and content transition.
-- No artificial confirmation delay.
-- Slow-confirmation copy.
-- Polling timeout actions.
-- Check Again starting only a new read-only polling cycle.
-- Reduced-motion behavior.
-- No duplicate or overlapping polling.
-- Cleanup and request abort on unmount.
-- Responsive layout and keyboard accessibility.
+### 3. Reliable outbox processor
 
-Run only:
+Implement a bounded processor that:
 
-- Focused result-page tests
-- Focused mocked browser checks
-- TypeScript
-- Changed-file ESLint
-- One production build
-- git diff --check
+- Loads authoritative Order data only after claiming an eligible job.
+- Uses row locking or an equivalent atomic claim so concurrent runs cannot intentionally send the same job.
+- Never calls Resend inside a database transaction.
+- Marks a job sent only after Resend accepts it.
+- Stores only necessary provider/reconciliation metadata.
+- Increments attempts and records a safe failure classification without storing raw provider bodies or PII.
+- Returns retryable jobs to an eligible state with bounded backoff.
+- Stops retrying after a reasonable maximum and marks the job terminally failed.
+- Recovers stale processing leases.
+- Processes a small bounded batch per invocation.
+- Treats already-sent jobs as terminal.
+- Uses the existing schema where sufficient. If lease/retry fields are missing, add only the minimum required fields and one reviewed migration.
 
-Do not run real Stripe, webhook, database, Storage, Email Outbox, checkout lifecycle, scene, or unrelated full regression suites.
+Resend idempotency is an additional safeguard, not a replacement for database concurrency control. Resend idempotency keys expire after 24 hours, so database state remains authoritative.
+
+### 4. Immediate delivery
+
+After a newly paid fulfillment transaction commits:
+
+- Attempt delivery only for that Order’s two Outbox jobs.
+- Perform email delivery outside the fulfillment transaction.
+- Email failure must not roll back or invalidate a successfully paid Order.
+- Preserve the existing safe Stripe webhook acknowledgement behavior.
+- Webhook replay must not create or resend completed jobs.
+- Do not delay the checkout success status on email delivery.
+
+### 5. Fallback entrypoints
+
+Add:
+
+- A one-shot CLI command for local/manual processing.
+- A protected internal Vercel Cron route using the existing exact Bearer `CRON_SECRET` contract and timing-safe comparison.
+- Safe aggregate JSON output only: scanned, sent, retried, failed, skipped.
+- No recipient, subject, body, provider ID, Order ID, or error body in route responses or logs.
+
+Add one daily fallback schedule compatible with Vercel Hobby. Immediate post-webhook delivery remains the primary path; the daily job only recovers failures/stale jobs.
+
+Ensure CLI and route processes terminate naturally and do not leak Payload/PostgreSQL handles.
+
+### 6. Access and privacy
+
+- Email Outbox remains administrator-read-only through Payload.
+- No public endpoint may trigger arbitrary email or choose a recipient.
+- Cron requests with missing/invalid authorization perform no work.
+- Reject query-string overrides.
+- Never log recipients, addresses, notes, email bodies, Resend responses, secrets, or PII.
+- Do not expose delivery state through storefront APIs.
+
+### 7. Tests
+
+Add focused tests for:
+
+- Exact customer and artist recipients
+- HTML/text template escaping
+- Exact monetary and shipping rendering
+- Artist note present/absent
+- Stable distinct idempotency keys
+- Successful state transition
+- Transient retry and terminal failure
+- Disabled/missing configuration
+- Concurrent claims
+- Stale lease recovery
+- Already-sent replay
+- Immediate post-fulfillment attempt outside the transaction
+- Provider failure preserving the paid Order
+- Cron authorization and safe output
+- CLI natural exit
+
+Run one isolated real Resend test using synthetic data:
+
+- Send exactly one customer confirmation and one artist notification to the configured test addresses.
+- Use clearly marked test subjects if necessary.
+- Do not perform a real or Stripe Sandbox payment solely for this test.
+- Remove only uniquely identified synthetic database fixtures afterward.
+- Email messages already accepted by Resend cannot be deleted; report their final provider status without printing provider IDs.
+
+## Validation
+
+Keep validation focused:
+
+1. Red-first focused tests
+2. Focused Email Outbox/provider tests
+3. Isolated database lifecycle
+4. One authorized real Resend two-email test
+5. TypeScript
+6. Changed-file ESLint
+7. One production build
+8. `git diff --check`
+
+Do not run full scene, upload, Storage, Stripe Sandbox, viewport, or broad acceptance suites unless a changed dependency requires them.
+
+## Excluded
+
+Do not add:
+
+- Shipment or tracking email
+- Refund/dispute email
+- Marketing/unsubscribe systems
+- Resend inbound email or webhooks
+- Bounce/complaint processing
+- Attachments or public upload links
+- Admin dashboard redesign
+- Customer accounts
+- Deployment
+- Live Stripe payment
+- Unrelated refactors
 
 ## Repository rules
 
-- Preserve unrelated work and mission.md.
-- Do not modify AGENTS.md.
-- Do not commit or push.
-- Stop task-created servers and browsers.
+- Inspect starting HEAD and working tree first.
+- Preserve `mission.md` and all user-owned changes.
+- Do not modify `.env.local`.
+- Update `.env.example` with safe placeholders only.
+- No commit or push.
+- Stop task-created servers and browser processes.
+- Report starting/ending HEAD, changed files, validation, real-email count/status, database cleanup, security review, and remaining limitations.

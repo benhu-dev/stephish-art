@@ -92,19 +92,25 @@ const validateCompletedOrder = async (
 };
 
 export const fulfillPaidStripeSession = async ({
+  attemptOrderEmailDelivery,
   event,
   now,
   probe = {},
   request,
   session,
 }: {
+  attemptOrderEmailDelivery?: (
+    orderId: number,
+    request: PayloadRequest,
+  ) => Promise<unknown>;
   event: WebhookEventEnvelope;
   now: Date;
   probe?: StripeWebhookTestProbe;
   request: PayloadRequest;
   session: ValidatedPaidSession;
-}) =>
-  runStripeWebhookTransaction(request, async (transaction) => {
+}) => {
+  let fulfilledOrderId: number | undefined;
+  const disposition = await runStripeWebhookTransaction(request, async (transaction) => {
     const intent = await lockWebhookIntent(transaction, session.intentId);
     const existingEvent = await lockWebhookEvent(transaction, event.id);
     if (existingEvent && existingEvent.disposition !== "rejected") {
@@ -232,6 +238,7 @@ export const fulfillPaidStripeSession = async ({
       overrideAccess: true,
       req: request,
     });
+    fulfilledOrderId = Number(order.id);
     await probe.afterOrder?.();
     for (const upload of uploads) {
       await request.payload.update({
@@ -269,3 +276,18 @@ export const fulfillPaidStripeSession = async ({
     await probe.afterLedger?.();
     return "processed";
   });
+
+  if (
+    disposition === "processed" &&
+    fulfilledOrderId &&
+    attemptOrderEmailDelivery
+  ) {
+    try {
+      await attemptOrderEmailDelivery(fulfilledOrderId, request);
+    } catch {
+      // Paid fulfillment is authoritative. The durable outbox remains eligible
+      // for the cron/manual retry path when immediate delivery fails.
+    }
+  }
+  return disposition;
+};

@@ -1,6 +1,7 @@
 import configPromise from "@payload-config";
 import { createLocalReq, getPayload } from "payload";
 
+import { deliverEmailOutbox } from "../../../../server/email/emailOutboxService";
 import { handleStripeWebhookRequest } from "../../../../server/stripe/stripeWebhookEndpoint";
 import { createStripeWebhookGateway } from "../../../../server/stripe/stripeWebhookGateway";
 import { processStripeWebhookEvent } from "../../../../server/stripe/stripeWebhookService";
@@ -25,6 +26,8 @@ export const POST = async (request: Request) => {
   const response = await handleStripeWebhookRequest(request, {
     processEvent: async (event) => {
       const outcome = await processStripeWebhookEvent({
+        attemptOrderEmailDelivery: (orderId, payloadRequest) =>
+          deliverEmailOutbox({ orderId, request: payloadRequest }),
         event,
         gateway,
         getRequest: async () => {

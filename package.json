@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "checkout:cleanup": "tsx scripts/checkout-cleanup.ts",
+    "email:deliver": "tsx scripts/email-outbox.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

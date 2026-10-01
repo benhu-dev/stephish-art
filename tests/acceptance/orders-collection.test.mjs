@@ -29,9 +29,13 @@ test("Orders has exactly the approved non-auth field contract", () => {
     "orderStatus",
     "paidAt",
     "paymentStatus",
+    "refundState",
+    "refundedAmountCents",
     "shippedAt",
     "shippingAddress",
     "stripeCheckoutSessionId",
+    "stripeDisputeId",
+    "stripeDisputeStatus",
     "stripePaymentIntentId",
     "trackingCarrier",
     "trackingNumber",
@@ -93,6 +97,24 @@ test("Orders defines the exact currency and status values", () => {
   ]);
   assert.equal(fieldsByName.paymentStatus.defaultValue, "paid");
   assert.equal(fieldsByName.paymentStatus.required, true);
+
+  assert.deepEqual(optionValues(fieldsByName.refundState), [
+    "none",
+    "partial",
+    "full",
+  ]);
+  assert.equal(fieldsByName.refundState.defaultValue, "none");
+  assert.equal(fieldsByName.refundState.required, true);
+  assert.deepEqual(optionValues(fieldsByName.stripeDisputeStatus), [
+    "lost",
+    "needs_response",
+    "prevented",
+    "under_review",
+    "warning_closed",
+    "warning_needs_response",
+    "warning_under_review",
+    "won",
+  ]);
 });
 
 test("Orders enforces amount and snapshot normalization rules", async () => {
@@ -108,6 +130,12 @@ test("Orders enforces amount and snapshot normalization rules", async () => {
   assert.notEqual(await validateAmount(0), true);
   assert.notEqual(await validateAmount(1.5), true);
   assert.notEqual(await validateAmount(undefined), true);
+
+  const validateRefundedAmount = fieldsByName.refundedAmountCents.validate;
+  assert.equal(await validateRefundedAmount(0), true);
+  assert.equal(await validateRefundedAmount(499), true);
+  assert.notEqual(await validateRefundedAmount(-1), true);
+  assert.notEqual(await validateRefundedAmount(1.5), true);
 });
 
 test("Orders has the exact shipping and fulfillment contract", async () => {
@@ -208,6 +236,10 @@ test("Orders immutable payment fields deny ordinary authenticated updates", asyn
     "stripePaymentIntentId",
     "paidAt",
     "paymentStatus",
+    "refundState",
+    "refundedAmountCents",
+    "stripeDisputeId",
+    "stripeDisputeStatus",
   ];
   const mutableFields = [
     "orderStatus",

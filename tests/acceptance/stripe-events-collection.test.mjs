@@ -32,6 +32,13 @@ test("Stripe Events is a minimal internal ledger with no raw or customer data", 
     "checkout.session.async_payment_succeeded",
     "checkout.session.async_payment_failed",
     "checkout.session.expired",
+    "refund.created",
+    "refund.updated",
+    "refund.failed",
+    "charge.refunded",
+    "charge.dispute.created",
+    "charge.dispute.updated",
+    "charge.dispute.closed",
   ]);
   assert.deepEqual(optionValues(fieldsByName.disposition), [
     "processed",

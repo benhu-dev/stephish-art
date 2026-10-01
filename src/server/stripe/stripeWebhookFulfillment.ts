@@ -230,6 +230,8 @@ export const fulfillPaidStripeSession = async ({
         orderStatus: "new",
         paidAt: session.eventCreatedAt,
         paymentStatus: "paid",
+        refundedAmountCents: 0,
+        refundState: "none",
         shippingAddress: session.shippingAddress,
         stripeCheckoutSessionId: session.sessionId,
         stripePaymentIntentId: session.paymentIntentId,

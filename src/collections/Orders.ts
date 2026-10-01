@@ -4,6 +4,7 @@ import {
   MAX_ARTIST_NOTE_CHARACTERS,
   normalizeArtistNote,
 } from "../server/storefront/artistNote";
+import { STRIPE_DISPUTE_STATUSES } from "../server/stripe/stripeWebhookContract";
 
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   Boolean(user);
@@ -166,6 +167,53 @@ export const Orders: CollectionConfig = {
         { label: "Disputed", value: "disputed" },
       ],
       required: true,
+    },
+    {
+      name: "refundedAmountCents",
+      type: "number",
+      access: {
+        update: denyAccess,
+      },
+      defaultValue: 0,
+      min: 0,
+      required: true,
+      validate: (value: unknown) =>
+        (typeof value === "number" && Number.isInteger(value) && value >= 0) ||
+        "Refunded amount must be a non-negative integer number of cents.",
+    },
+    {
+      name: "refundState",
+      type: "select",
+      access: {
+        update: denyAccess,
+      },
+      defaultValue: "none",
+      options: [
+        { label: "None", value: "none" },
+        { label: "Partial", value: "partial" },
+        { label: "Full", value: "full" },
+      ],
+      required: true,
+    },
+    {
+      name: "stripeDisputeId",
+      type: "text",
+      access: {
+        update: denyAccess,
+      },
+      index: true,
+      maxLength: 255,
+    },
+    {
+      name: "stripeDisputeStatus",
+      type: "select",
+      access: {
+        update: denyAccess,
+      },
+      options: STRIPE_DISPUTE_STATUSES.map((value) => ({
+        label: value,
+        value,
+      })),
     },
     {
       name: "shippingAddress",

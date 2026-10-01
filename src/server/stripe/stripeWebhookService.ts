@@ -16,6 +16,15 @@ import {
 } from "./stripeWebhookContract";
 import type { StripeWebhookGateway } from "./stripeWebhookGateway";
 import {
+  isPaymentReconciliationEvent,
+  retrieveAuthoritativePaymentState,
+} from "./stripeWebhookReconciliation";
+import {
+  reconcileAuthoritativePaymentState,
+  recordRejectedPaymentReconciliation,
+  type StripeReconciliationTestProbe,
+} from "./stripeWebhookReconciliationPersistence";
+import {
   readStripeReconciliation,
   validateRetrievedPaidSession,
   validateTerminalSession,
@@ -31,6 +40,7 @@ type StripeWebhookServiceInput = {
   getRequest: () => Promise<PayloadRequest>;
   now?: Date;
   probe?: StripeWebhookTestProbe;
+  reconciliationProbe?: StripeReconciliationTestProbe;
 };
 
 const validEventId = (value: unknown): value is string =>
@@ -63,15 +73,41 @@ export const processStripeWebhookEvent = async ({
   getRequest,
   now = new Date(),
   probe,
+  reconciliationProbe,
 }: StripeWebhookServiceInput) => {
   if (!isSupportedStripeWebhookEvent(event.type)) return "unrelated";
+  const envelope = envelopeFor(event, event.type);
+  if (!envelope) return "unrelated";
+
+  if (isPaymentReconciliationEvent(event.type)) {
+    const retrieved = await retrieveAuthoritativePaymentState({
+      event,
+      gateway,
+    });
+    const request = await getRequest();
+    if (retrieved.kind === "rejected") {
+      return recordRejectedPaymentReconciliation({
+        code: retrieved.code,
+        event: envelope,
+        now,
+        request,
+      });
+    }
+    return reconcileAuthoritativePaymentState({
+      event: envelope,
+      isDisputeEvent: event.type.startsWith("charge.dispute."),
+      now,
+      probe: reconciliationProbe,
+      request,
+      state: retrieved.state,
+    });
+  }
+
   const eventSession = event.data.object as Stripe.Checkout.Session;
   if (eventSession?.object !== "checkout.session") return "unrelated";
 
   const reconciliation = readStripeReconciliation(eventSession);
   if (reconciliation.kind === "unrelated") return "unrelated";
-  const envelope = envelopeFor(event, event.type);
-  if (!envelope) return "unrelated";
   if (reconciliation.kind === "invalid") {
     return recordRejectedStripeEvent({
       code: "invalid_metadata",

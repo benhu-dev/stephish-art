@@ -51,6 +51,13 @@ export type WebhookOrder = {
   sessionId: string;
 };
 
+export type WebhookReconciliationOrder = WebhookOrder & {
+  refundState: "full" | "none" | "partial";
+  refundedAmountCents: number;
+  stripeDisputeId: string | null;
+  stripeDisputeStatus: string | null;
+};
+
 export type WebhookLedgerEntry = {
   checkoutIntentId: number | null;
   disposition: "ignored" | "processed" | "rejected";
@@ -171,6 +178,66 @@ export const readWebhookOrderConflicts = async (
     paymentIntentId: String(row.stripe_payment_intent_id),
     sessionId: String(row.stripe_checkout_session_id),
   }));
+};
+
+export const lockWebhookOrderByPaymentIntent = async (
+  transaction: StorefrontTransaction,
+  paymentIntentId: string,
+): Promise<WebhookReconciliationOrder | null> => {
+  const result = await transaction.database.execute(sql`
+    SELECT id, checkout_intent_id, amount_cents, artist_note, currency,
+      stripe_checkout_session_id, stripe_payment_intent_id,
+      refunded_amount_cents, refund_state, stripe_dispute_id,
+      stripe_dispute_status
+    FROM public.orders
+    WHERE stripe_payment_intent_id = ${paymentIntentId}
+    FOR UPDATE
+  `);
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    amountCents: Number(row.amount_cents),
+    artistNote: typeof row.artist_note === "string" ? row.artist_note : null,
+    checkoutIntentId: Number(row.checkout_intent_id),
+    currency: String(row.currency),
+    id: Number(row.id),
+    paymentIntentId: String(row.stripe_payment_intent_id),
+    refundState: String(
+      row.refund_state,
+    ) as WebhookReconciliationOrder["refundState"],
+    refundedAmountCents: Number(row.refunded_amount_cents),
+    sessionId: String(row.stripe_checkout_session_id),
+    stripeDisputeId:
+      typeof row.stripe_dispute_id === "string"
+        ? row.stripe_dispute_id
+        : null,
+    stripeDisputeStatus:
+      typeof row.stripe_dispute_status === "string"
+        ? row.stripe_dispute_status
+        : null,
+  };
+};
+
+export const readLatestProcessedDisputeEventCreatedAt = async (
+  transaction: StorefrontTransaction,
+  checkoutIntentId: number,
+) => {
+  const result = await transaction.database.execute(sql`
+    SELECT stripe_created_at
+    FROM public.stripe_events
+    WHERE checkout_intent_id = ${checkoutIntentId}
+      AND disposition = 'processed'
+      AND event_type::text IN (
+        'charge.dispute.created',
+        'charge.dispute.updated',
+        'charge.dispute.closed'
+      )
+    ORDER BY stripe_created_at DESC, id DESC
+    LIMIT 1
+  `);
+  const value = result.rows[0]?.stripe_created_at;
+  return value ? new Date(String(value)).toISOString() : null;
 };
 
 export const lockWebhookEvent = async (

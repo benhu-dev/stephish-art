@@ -192,6 +192,21 @@ export interface Order {
   paidAt: string;
   orderStatus: 'new' | 'in_progress' | 'ready_to_ship' | 'shipped' | 'completed' | 'cancelled';
   paymentStatus: 'paid' | 'partially_refunded' | 'refunded' | 'disputed';
+  refundedAmountCents: number;
+  refundState: 'none' | 'partial' | 'full';
+  stripeDisputeId?: string | null;
+  stripeDisputeStatus?:
+    | (
+        | 'lost'
+        | 'needs_response'
+        | 'prevented'
+        | 'under_review'
+        | 'warning_closed'
+        | 'warning_needs_response'
+        | 'warning_under_review'
+        | 'won'
+      )
+    | null;
   shippingAddress: {
     recipientName: string;
     line1: string;
@@ -288,7 +303,14 @@ export interface StripeEvent {
     | 'checkout.session.completed'
     | 'checkout.session.async_payment_succeeded'
     | 'checkout.session.async_payment_failed'
-    | 'checkout.session.expired';
+    | 'checkout.session.expired'
+    | 'refund.created'
+    | 'refund.updated'
+    | 'refund.failed'
+    | 'charge.refunded'
+    | 'charge.dispute.created'
+    | 'charge.dispute.updated'
+    | 'charge.dispute.closed';
   disposition: 'processed' | 'ignored' | 'rejected';
   checkoutIntent?: (number | null) | CheckoutIntent;
   stripeCreatedAt: string;
@@ -308,6 +330,13 @@ export interface StripeEvent {
         | 'invalid_shipping'
         | 'invalid_uploads'
         | 'payment_mismatch'
+        | 'order_not_found'
+        | 'refund_amount_invalid'
+        | 'refund_reconciled'
+        | 'refund_regression'
+        | 'reconciliation_object_mismatch'
+        | 'dispute_reconciled'
+        | 'stale_event'
         | 'reconciliation_mismatch'
         | 'session_expired'
         | 'session_mismatch'
@@ -460,6 +489,10 @@ export interface OrdersSelect<T extends boolean = true> {
   paidAt?: T;
   orderStatus?: T;
   paymentStatus?: T;
+  refundedAmountCents?: T;
+  refundState?: T;
+  stripeDisputeId?: T;
+  stripeDisputeStatus?: T;
   shippingAddress?:
     | T
     | {

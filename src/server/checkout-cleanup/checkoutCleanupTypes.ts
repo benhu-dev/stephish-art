@@ -30,6 +30,7 @@ export type CleanupCandidateLock = {
 export type CleanupSummary = {
   eligible: number;
   intentsDeleted: number;
+  rateLimitRows: number;
   retryableFailures: number;
   scanned: number;
   skippedActive: number;
@@ -40,6 +41,10 @@ export type CleanupSummary = {
 };
 
 export type CheckoutCleanupDependencies = {
+  cleanupRateLimits: (options: {
+    execute: boolean;
+    limit: number;
+  }) => Promise<number>;
   deleteObject: (filename: string) => Promise<void>;
   gateway: Pick<
     StripeCheckoutGateway,

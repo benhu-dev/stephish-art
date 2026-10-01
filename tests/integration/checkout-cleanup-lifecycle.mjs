@@ -133,6 +133,7 @@ try {
   const request = await createLocalReq({}, payload);
   const summary = await runCheckoutCleanup({
     dependencies: {
+      cleanupRateLimits: async () => 0,
       gateway: {
         expireSession: async () => assert.fail("unexpected Stripe expiration"),
         retrieveSession: async () => assert.fail("unexpected Stripe retrieval"),
@@ -146,6 +147,7 @@ try {
   assert.deepEqual(summary, {
     eligible: 1,
     intentsDeleted: 1,
+    rateLimitRows: 0,
     retryableFailures: 0,
     scanned: 1,
     skippedActive: 0,

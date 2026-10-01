@@ -2,6 +2,7 @@ import {
   MAX_PHOTO_BYTES,
   SUPPORTED_PHOTO_MIME_TYPES,
 } from "./clientCheckoutDraft";
+import { readRetryAfterSeconds } from "./checkoutRateLimitClient";
 
 const CURRENT_UPLOADS = "/api/storefront/checkout-intents/current/uploads";
 const allowedMimeTypes = new Set(SUPPORTED_PHOTO_MIME_TYPES);
@@ -13,6 +14,7 @@ type FetchLike = (
 
 type PreviewResult =
   | { kind: "aborted" | "failed" }
+  | { kind: "rate_limited"; retryAfterSeconds: number | null }
   | { kind: "ready"; previewUrl: string };
 
 type PreviewDependencies = {
@@ -77,6 +79,12 @@ export const createCheckoutPhotoPreviewManager = (
             signal: controller.signal,
           },
         );
+        if (response.status === 429) {
+          return {
+            kind: "rate_limited",
+            retryAfterSeconds: readRetryAfterSeconds(response),
+          };
+        }
         if (response.status !== 200) return { kind: "failed" };
         const contentType = response.headers.get("content-type");
         if (!contentType || !allowedMimeTypes.has(contentType)) {

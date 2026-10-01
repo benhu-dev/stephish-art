@@ -12,12 +12,15 @@ import type {
   CleanupSummary,
   LockedCleanupCandidate,
 } from "./checkoutCleanupTypes";
+import { cleanupExpiredRateLimitBuckets } from "./rateLimitCleanupRepository";
 
 export const CHECKOUT_CLEANUP_BATCH_LIMIT = 25;
+export const RATE_LIMIT_CLEANUP_BATCH_LIMIT = 500;
 
 const emptySummary = (): CleanupSummary => ({
   eligible: 0,
   intentsDeleted: 0,
+  rateLimitRows: 0,
   retryableFailures: 0,
   scanned: 0,
   skippedActive: 0,
@@ -84,6 +87,9 @@ const resolveDependencies = (
     return request;
   };
   return {
+    cleanupRateLimits:
+      provided.cleanupRateLimits ??
+      ((options) => cleanupExpiredRateLimitBuckets(requireRequest(), options)),
     deleteObject: provided.deleteObject ?? deleteOrderUploadObject,
     gateway: provided.gateway ?? createStripeCheckoutGateway(),
     listCandidates:
@@ -148,6 +154,10 @@ export const runCheckoutCleanup = async ({
 }): Promise<CleanupSummary> => {
   const dependencies = resolveDependencies(request, provided);
   const summary = emptySummary();
+  summary.rateLimitRows = await dependencies.cleanupRateLimits({
+    execute,
+    limit: RATE_LIMIT_CLEANUP_BATCH_LIMIT,
+  });
   const listed = await dependencies.listCandidates({
     limit: CHECKOUT_CLEANUP_BATCH_LIMIT,
     now,

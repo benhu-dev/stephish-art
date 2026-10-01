@@ -42,6 +42,7 @@ const lockFor = (state, sequence, options = {}) => ({
 
 const dependenciesFor = ({
   candidates = [candidate()],
+  cleanupRateLimits,
   deleteObject,
   expireSession,
   lockState = lockedState(),
@@ -51,6 +52,12 @@ const dependenciesFor = ({
   const mutations = [];
   return {
     dependencies: {
+      cleanupRateLimits:
+        cleanupRateLimits ??
+        (async ({ limit }) => {
+          assert.equal(limit, 500);
+          return 2;
+        }),
       deleteObject:
         deleteObject ??
         (async () => {
@@ -103,6 +110,7 @@ test("dry run is bounded and performs zero Stripe, Storage, or database mutation
   assert.equal(summary.scanned, 1);
   assert.equal(summary.eligible, 1);
   assert.equal(summary.intentsDeleted, 0);
+  assert.equal(summary.rateLimitRows, 2);
   assert.deepEqual(fixture.mutations, []);
   assert.deepEqual(fixture.sequence, ["lock", "rollback"]);
 });
@@ -283,6 +291,7 @@ test("duplicate concurrent runs serialize and converge without duplicate deletio
     return lock;
   };
   const dependencies = {
+    cleanupRateLimits: async () => 0,
     deleteObject: async () => assert.fail("unexpected Storage deletion"),
     gateway: {
       expireSession: async () => assert.fail("unexpected Stripe expiration"),
@@ -298,4 +307,38 @@ test("duplicate concurrent runs serialize and converge without duplicate deletio
   ]);
   assert.equal(summaries.reduce((sum, item) => sum + item.intentsDeleted, 0), 1);
   assert.equal(sequence.filter((entry) => entry === "intent").length, 1);
+});
+
+test("expired rate-limit cleanup is bounded and dry-run remains mutation-free", async () => {
+  const calls = [];
+  const dry = dependenciesFor({
+    candidates: [],
+    cleanupRateLimits: async (options) => {
+      calls.push(options);
+      return 7;
+    },
+  });
+  const drySummary = await runCheckoutCleanup({
+    dependencies: dry.dependencies,
+    execute: false,
+    now,
+  });
+  assert.deepEqual(calls, [{ execute: false, limit: 500 }]);
+  assert.equal(drySummary.rateLimitRows, 7);
+  assert.deepEqual(dry.mutations, []);
+
+  const execute = dependenciesFor({
+    candidates: [],
+    cleanupRateLimits: async (options) => {
+      calls.push(options);
+      return 5;
+    },
+  });
+  const executeSummary = await runCheckoutCleanup({
+    dependencies: execute.dependencies,
+    execute: true,
+    now,
+  });
+  assert.deepEqual(calls.at(-1), { execute: true, limit: 500 });
+  assert.equal(executeSummary.rateLimitRows, 5);
 });

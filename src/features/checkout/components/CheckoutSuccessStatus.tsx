@@ -9,6 +9,10 @@ import {
   type CheckoutStatusViewState,
 } from "../checkoutStatusPolling";
 import { createCheckoutResultPresentation } from "../checkoutResultPresentation";
+import {
+  GENERIC_RATE_LIMIT_MESSAGE,
+  readRetryAfterSeconds,
+} from "../checkoutRateLimitClient";
 import styles from "./checkout-result.module.css";
 
 const statusEndpoint = "/api/storefront/checkout-intents/current/status";
@@ -45,6 +49,12 @@ const readStatus = async (signal: AbortSignal) => {
     headers: { Accept: "application/json" },
     signal,
   });
+  if (response.status === 429) {
+    return {
+      retryAfterSeconds: readRetryAfterSeconds(response),
+      state: "rate_limited" as const,
+    };
+  }
   if (!response.ok) throw new Error("STATUS_UNAVAILABLE");
   return parseStatus(await response.json());
 };
@@ -176,6 +186,18 @@ export function CheckoutSuccessStatus() {
           <h1 className={styles.title}>Checkout unavailable.</h1>
           <p>This checkout cannot be accessed from this browser.</p>
           <Link className={styles.primaryAction} href="/">Return home</Link>
+        </>
+      ) : null}
+      {state.phase === "rate_limited" ? (
+        <>
+          <h1 className={styles.title}>Please check again shortly.</h1>
+          <p>{GENERIC_RATE_LIMIT_MESSAGE}</p>
+          <div className={styles.actions}>
+            <button className={styles.primaryAction} onClick={checkAgain} type="button">
+              Check Again
+            </button>
+            <Link className={styles.secondaryAction} href="/">Return Home</Link>
+          </div>
         </>
       ) : null}
       {state.phase === "timeout" ? (

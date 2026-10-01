@@ -2,6 +2,10 @@ import {
   parseSafeCurrentResponse,
   type SafeIntentState,
 } from "./checkoutIntentClient";
+import {
+  GENERIC_RATE_LIMIT_MESSAGE,
+  readRetryAfterSeconds,
+} from "./checkoutRateLimitClient";
 
 const CURRENT_ENDPOINT = "/api/storefront/checkout-intents/current";
 const RECOVERY_ENDPOINT = `${CURRENT_ENDPOINT}/recovery`;
@@ -17,11 +21,12 @@ export type CurrentCheckoutResult =
   | { kind: "processing" }
   | { kind: "fresh" }
   | { kind: "aborted" }
+  | { kind: "rate_limited"; retryAfterSeconds: number | null }
   | { kind: "failed" };
 
 export type AbandonCheckoutResult =
   | { kind: "abandoned" | "aborted" | "fresh" | "processing" }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; message: string; retryAfterSeconds?: number | null };
 
 const isAbort = (error: unknown) =>
   error instanceof DOMException && error.name === "AbortError";
@@ -37,6 +42,12 @@ export async function readCurrentCheckoutState(
       method: "GET",
       ...(signal ? { signal } : {}),
     });
+    if (response.status === 429) {
+      return {
+        kind: "rate_limited",
+        retryAfterSeconds: readRetryAfterSeconds(response),
+      };
+    }
     if (response.status === 204) return { kind: "fresh" };
     if (response.status !== 200) return { kind: "failed" };
     const state = parseSafeCurrentResponse(await response.json());
@@ -76,6 +87,13 @@ export async function abandonCurrentCheckout(
       method: "POST",
       ...(signal ? { signal } : {}),
     });
+    if (response.status === 429) {
+      return {
+        kind: "failed",
+        message: GENERIC_RATE_LIMIT_MESSAGE,
+        retryAfterSeconds: readRetryAfterSeconds(response),
+      };
+    }
     if (response.status === 204) return { kind: "abandoned" };
     if (response.status === 409) return { kind: "processing" };
     if (response.status === 401 || response.status === 410) return { kind: "fresh" };

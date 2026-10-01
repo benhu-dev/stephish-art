@@ -9,6 +9,7 @@ import * as migration_20260917_080014_add_stripe_checkout_sessions from './20260
 import * as migration_20260918_073547_add_stripe_webhook_fulfillment from './20260918_073547_add_stripe_webhook_fulfillment';
 import * as migration_20260924_075033_persist_artist_note from './20260924_075033_persist_artist_note';
 import * as migration_20260927_223710_add_email_outbox from './20260927_223710_add_email_outbox';
+import * as migration_20261001_080010_add_storefront_rate_limits from './20261001_080010_add_storefront_rate_limits';
 
 export const migrations = [
   {
@@ -64,6 +65,11 @@ export const migrations = [
   {
     up: migration_20260927_223710_add_email_outbox.up,
     down: migration_20260927_223710_add_email_outbox.down,
-    name: '20260927_223710_add_email_outbox'
+    name: '20260927_223710_add_email_outbox',
+  },
+  {
+    up: migration_20261001_080010_add_storefront_rate_limits.up,
+    down: migration_20261001_080010_add_storefront_rate_limits.down,
+    name: '20261001_080010_add_storefront_rate_limits'
   },
 ];

@@ -35,7 +35,7 @@ export function CheckoutCancelledActions() {
       const result = await requestCheckoutSession({ signal: nextController.signal });
       if (controller.current !== nextController || result.kind === "aborted") return;
       if (result.kind === "failed") {
-        setMessage("Secure checkout could not be resumed. Try again or start a new order.");
+        setMessage(result.message);
         return;
       }
       if (result.kind === "ready") window.location.assign(result.checkoutUrl);

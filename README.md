@@ -67,6 +67,14 @@ then finalizes the same attempt in a second transaction. Retries use the same
 persisted Stripe idempotency key. The response contains only `checkoutUrl` and
 `expiresAt`.
 
+Anonymous storefront APIs use fixed-window PostgreSQL rate limits shared across
+application instances. Network and Checkout Intent subjects are stored only as
+domain-separated HMAC-SHA256 values derived with the existing server-only
+`PAYLOAD_SECRET`; raw addresses and credentials are not persisted. Production
+identity resolution requires Vercel's platform-owned forwarded-address header
+and fails closed when it is unavailable. No additional environment variable or
+external rate-limit service is required.
+
 The endpoint creates a guest, card-only, USD Stripe-hosted Session with United
 States shipping, fixed configured shipping, Customer creation enabled, and
 automatic tax, discounts, invoicing, and future payment-method saving disabled.
@@ -88,6 +96,8 @@ Storage objects first, then upload rows, and the Checkout Intent last. Completed
 Intents, Orders, paid-order uploads and images, paid or uncertain Stripe Sessions,
 and active reservations are excluded. Missing Storage objects are safe to retry;
 Storage failures retain database rows for a later run.
+The same cleanup invocation also scans or deletes at most 500 expired internal
+rate-limit buckets and reports only their aggregate row count.
 
 Preview one bounded batch without Stripe expiration, Storage deletion, or
 database mutation:

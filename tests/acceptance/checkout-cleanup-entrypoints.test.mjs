@@ -10,6 +10,7 @@ const secret = "A".repeat(32);
 const summary = {
   eligible: 1,
   intentsDeleted: 1,
+  rateLimitRows: 2,
   retryableFailures: 0,
   scanned: 1,
   skippedActive: 0,
@@ -103,6 +104,7 @@ test("Cron failures are generic and summaries contain aggregate keys only", asyn
   assert.deepEqual(Object.keys(summary).sort(), [
     "eligible",
     "intentsDeleted",
+    "rateLimitRows",
     "retryableFailures",
     "scanned",
     "skippedActive",

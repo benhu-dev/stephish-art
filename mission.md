@@ -1,119 +1,220 @@
-# Phase 2 — Unit 2.17.1: New York Time Policy
+# Phase 2 — Unit 2.18: Anonymous Storefront Abuse Protection
 
 ## Goal
 
-Establish one explicit business-time policy:
+Add distributed, privacy-preserving rate limiting to the anonymous storefront checkout APIs.
 
-- PostgreSQL continues storing absolute timestamps in UTC.
-- Artist/business-facing dates use `America/New_York`.
-- The public day/night scene uses New York time regardless of visitor location.
+The protection must prevent one client or Checkout Intent from repeatedly consuming PostgreSQL, private Storage, Stripe, or server resources while preserving the existing normal checkout, upload, preview, polling, recovery, cancellation, and retry flows.
 
-Complete Unit 2.17.1 only.
+Complete Unit 2.18 only.
 
-## Confirmed decisions
+## Confirmed architecture
 
-- Do not rewrite existing database timestamps.
-- Do not change the PostgreSQL or Supabase session timezone.
-- Do not attempt to change how Supabase Table Editor displays timestamps.
-- Use the IANA zone `America/New_York`, never hard-coded EST, EDT, UTC-5, or UTC-4.
-- Preserve the scene’s existing day/night hour thresholds.
-- Preserve `?theme=day` and `?theme=night` overrides.
-- Database and provider timestamps remain authoritative UTC instants.
+- Use PostgreSQL for shared rate-limit state across Vercel instances.
+- Do not use process-memory counters as the production authority.
+- Do not add Redis, Upstash, CAPTCHA, Turnstile, Vercel Firewall SDK, or another external provider.
+- Use the existing high-entropy `PAYLOAD_SECRET` with domain-separated HMAC to derive irreversible subject hashes.
+- Never store raw IP addresses, cookies, access tokens, user agents, email addresses, URLs, or request bodies in rate-limit records.
+- Rate limiting is defense-in-depth and never replaces cookie authentication, same-origin enforcement, validation, or Stripe idempotency.
+- No public Payload Collection, REST endpoint, or GraphQL surface should be created for rate-limit records.
 
 ## In scope
 
-### Shared time policy
+### 1. Internal rate-limit persistence
 
-Create a small deterministic server-safe utility for:
+Add one internal PostgreSQL table through a reviewed forward migration.
 
-- Converting an instant into New York calendar/time parts.
-- Determining day/night using the existing scene thresholds.
-- Formatting artist/business-facing timestamps in New York time when the current application displays such timestamps.
-- Dependency-injected or explicit `Date` input for testing.
+Store only the minimum required data:
 
-Use platform `Intl` APIs unless the installed runtime demonstrably requires something else. Do not add a date library.
+- Action/scope
+- HMAC subject hash
+- Fixed-window start
+- Request count
+- Expiration time
 
-### Public scene
+Requirements:
 
-Update automatic scene theme resolution so:
+- Atomic insert/increment under concurrency
+- Unique key preventing duplicate buckets
+- Database-authoritative time where practical
+- Bounded integer counters
+- RLS enabled in the same migration
+- No `anon` or `authenticated` policies
+- No Payload collection or Admin UI
+- Expired rows removable through a bounded cleanup operation
 
-- Visitor device timezone has no effect.
-- The same instant produces the same theme in Los Angeles, New York, Taiwan, or UTC environments.
-- Valid query overrides take precedence.
-- Invalid override values fall back to automatic New York-time resolution.
-- Existing reduced-motion, responsive, and manual override behavior remains unchanged.
-- A page left open across an existing day/night boundary can update without reload if the current implementation already supports automatic re-evaluation; otherwise add the smallest bounded timer necessary.
+Do not modify existing application records or migrations.
 
-Avoid hydration mismatch, timer leaks, or repeated intervals.
+### 2. Privacy-preserving subjects
 
-### Existing business-facing output
+Create deterministic domain-separated HMAC subjects.
 
-Inspect current email/result-page formatting:
+For Intent creation:
 
-- If an existing timestamp is shown to the artist or customer, format it explicitly and label it clearly using New York business time.
-- If no timestamp is currently displayed, do not add new UI or email content solely for this Unit.
-- Do not change Stripe, Resend, Cron, Order, or cleanup timestamps.
+- Use the trusted network identity available from the supported Vercel request boundary.
+- Do not trust arbitrary client-supplied forwarding headers in production.
+- Do not expose the resolved address or hash.
 
-### Documentation
+For requests carrying the Checkout Intent cookie:
 
-Document briefly:
+- Enforce both a network-level bucket and an Intent-credential bucket.
+- Hash the credential material before persistence.
+- Never store or log the raw cookie or token.
+- A caller must not evade the network limit by inventing cookies.
+- A shared network must not allow one Intent to consume every other Intent’s credential allowance.
 
-- Database timestamps are UTC.
-- Business timezone is `America/New_York`.
-- Supabase Table Editor may continue showing UTC.
-- Current Vercel Cron expressions remain UTC and are unchanged.
+Local development may use a deterministic loopback subject. Production must fail safely if the trusted client identity cannot be resolved rather than accepting a spoofable identity source.
+
+Use installed platform/runtime facilities where available. Do not add a dependency solely to read an IP address without first establishing that it is necessary.
+
+### 3. Initial limits
+
+Centralize the policy in one typed server-only module.
+
+Use these initial fixed-window limits:
+
+- Intent create/resume: 10 requests per 15 minutes per network
+- Amount save: 30 requests per 15 minutes per network and Intent
+- Photo upload: 12 requests per 15 minutes per network and Intent
+- Photo removal: 20 requests per 15 minutes per network and Intent
+- Protected photo preview: 90 requests per 15 minutes per network and Intent
+- Artist-note save: 30 requests per 15 minutes per network and Intent
+- Checkout Session create/resume: 10 requests per 15 minutes per network and Intent
+- Abandon/start-over: 10 requests per 15 minutes per network and Intent
+- Current/recovery reads: 60 requests per 15 minutes per network
+- Checkout status polling: 90 requests per 5 minutes per network and Intent
+
+Count attempts before expensive application work, including malformed, unauthorized, or business-rejected requests where the trusted network identity is available.
+
+Do not rate-limit:
+
+- Stripe webhooks
+- Internal Cron routes
+- CLI commands
+- Payload Admin
+- Static pages/assets
+- Health checks
+
+### 4. Endpoint behavior
+
+When allowed:
+
+- Preserve the exact existing endpoint contracts and behavior.
+
+When denied:
+
+- Return HTTP 429.
+- Include an integer `Retry-After` header.
+- Use `Cache-Control: no-store`.
+- Return one generic safe JSON error.
+- Do not reveal thresholds, counters, bucket keys, identities, Intent existence, internal IDs, or whether the network or credential bucket triggered.
+- Perform no downstream Stripe, Storage, upload, email, or business mutation.
+
+If the limiter itself cannot safely determine or persist a decision:
+
+- Return a generic HTTP 503.
+- Perform no protected business mutation.
+- Log only a safe bounded classification without identity or PII.
+
+Rate-limit checks must not create a database transaction that remains open during Stripe, Storage, or Resend calls.
+
+### 5. Client behavior
+
+Add only the minimum functional handling required:
+
+- Amount, photo, note, Checkout Session, cancellation, recovery, preview, and status clients must treat 429 safely.
+- Show a short generic retry-later message where user action is required.
+- Prevent automatic polling from hammering after a 429.
+- Respect a valid bounded `Retry-After` value where appropriate.
+- Do not show counters, internal rules, IP information, or security terminology.
+- Preserve all existing visual styling and layout.
+- Do not redesign the modal or result pages.
+
+### 6. Cleanup
+
+Extend the existing cleanup infrastructure to delete expired rate-limit buckets safely and in bounded batches.
+
+Requirements:
+
+- Dry-run performs no deletion.
+- Cleanup output contains only an aggregate rate-limit-row count.
+- Existing Intent/upload/Storage cleanup behavior remains unchanged.
+- No raw rate-limit keys or subjects enter logs or responses.
+- Concurrent cleanup runs converge safely.
+
+### 7. Migration and access
+
+- Generate and review exactly one migration if required.
+- Enable RLS for the new internal table.
+- Apply it to the configured development database.
+- Verify there are no public policies or public application endpoints.
+- Regenerate supported generated artifacts only when required.
+- Do not modify existing applied migrations.
 
 ## Acceptance criteria
 
-1. Database schema, stored timestamps, existing rows, and migrations remain unchanged.
-2. Automatic day/night resolution uses `America/New_York`.
-3. Host/browser timezone does not change the result for the same instant.
-4. Existing day/night hour thresholds remain unchanged.
-5. `?theme=day` and `?theme=night` still override automatic behavior.
-6. Invalid query values do not grant a new theme mode.
-7. At least one winter EST instant and one summer EDT instant resolve correctly.
-8. DST behavior is derived from the IANA timezone rather than a fixed offset.
-9. Timer/listener cleanup prevents updates after unmount.
-10. Reduced-motion and existing scene behavior remain intact.
-11. No new dependency, environment variable, schema, migration, database mutation, or provider call is introduced.
+1. Counters are shared through PostgreSQL and not process memory.
+2. Concurrent requests cannot exceed the configured bucket through lost updates.
+3. Raw IP addresses, cookies, tokens, PII, URLs, and user agents are never persisted or logged.
+4. Identical subjects and actions produce stable hashes; different actions are domain-separated.
+5. Production does not trust arbitrary spoofable client IP headers.
+6. Every listed storefront action enforces its configured network/Intent policy.
+7. Normal status polling and three-photo checkout remain below the limits.
+8. The first request over a limit returns generic 429 with safe `Retry-After` and `no-store`.
+9. A denied upload performs no Storage write or upload-row mutation.
+10. A denied Checkout Session request performs no Stripe call.
+11. Invalid/unauthorized request floods still consume the network allowance.
+12. Limiter failure returns generic 503 without downstream mutation.
+13. Client polling stops or backs off safely after 429.
+14. Expired buckets are cleaned in bounded batches; dry-run is mutation-free.
+15. The internal table has RLS enabled and no public policies.
+16. Existing authentication, origin, cookie, validation, idempotency, payment, cleanup, and UI contracts remain unchanged.
+17. No new external service, dependency, environment variable, CAPTCHA, or public Admin surface is introduced.
 
 ## Required verification
 
 Keep verification focused:
 
-1. Red-first deterministic timezone/theme tests.
-2. Focused theme and query-override tests.
-3. One browser check with a mocked instant proving New York-based automatic selection.
-4. One browser query-override check.
-5. TypeScript.
-6. ESLint on changed handwritten files.
-7. One production build.
-8. `git diff --check`.
+1. Red-first rate-limit service and endpoint tests.
+2. Deterministic HMAC/privacy tests.
+3. Concurrent PostgreSQL increment test.
+4. Focused endpoint tests for 429, Retry-After, no-store, and zero downstream side effects.
+5. Focused client/polling tests for 429 behavior.
+6. Isolated cleanup lifecycle with starting/final application-data counts.
+7. Migration generation/review/application/status.
+8. RLS and no-public-policy inspection.
+9. TypeScript.
+10. ESLint on changed handwritten files.
+11. One production build.
+12. `git diff --check`.
 
-Do not run Stripe, Storage, Resend, database lifecycle, checkout lifecycle, upload, email, full viewport, or broad acceptance suites.
+Do not run real Stripe, Resend, Storage upload, payment, email, scene, viewport, or full browser suites.
+
+Mock or spy on provider boundaries to prove that denied requests make zero provider calls.
 
 ## Out of scope
 
-- Changing Supabase Table Editor timezone
-- Database timestamp conversion or backfill
-- Payload Admin customization
-- Custom timezone selector
-- Geolocation
-- Sunrise/sunset APIs
-- Weather-based themes
-- Cron schedule changes
-- Refund handling
-- Abuse protection
-- Upload hardening
-- Public visual redesign
-- New animations
+- CAPTCHA or Turnstile
+- Vercel WAF configuration
+- Redis or Upstash
+- Upload content decoding or EXIF removal
+- Refund/dispute handling
+- Fulfillment/tracking
+- Admin Dashboard
+- Public UI redesign
+- Authentication changes
+- Customer accounts
+- Production deployment
+- Dynamic limit management UI
 
 ## Repository rules
 
-- Inspect starting HEAD and working tree once.
-- Treat the updated `AGENTS.md` and active `mission.md` as intentional.
-- Preserve all user-owned changes.
+- Read the updated `AGENTS.md` and this mission.
+- Record starting HEAD and working tree once.
+- The committed Unit 2.17.1 work is the baseline.
+- Preserve user-owned changes.
 - Do not modify `.env.local`.
+- Do not print or expose `PAYLOAD_SECRET`.
 - Do not commit or push.
-- Stop task-created processes.
-- Report the exact theme threshold found in existing code and confirm it was preserved.
+- Stop task-created servers and browsers.
+- Report exact changed files, migration status, focused validation, cleanup restoration, and remaining limitations.

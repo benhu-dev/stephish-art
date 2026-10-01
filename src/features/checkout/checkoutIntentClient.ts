@@ -5,6 +5,7 @@ import {
   SUPPORTED_PHOTO_MIME_TYPES,
   type CheckoutLimits,
 } from "./clientCheckoutDraft";
+import { GENERIC_RATE_LIMIT_MESSAGE } from "./checkoutRateLimitClient";
 
 const CHECKOUT_INTENT_ENDPOINT = "/api/storefront/checkout-intents";
 const ARTIST_NOTE_ENDPOINT = `${CHECKOUT_INTENT_ENDPOINT}/current/artist-note`;
@@ -134,6 +135,7 @@ export const parseSafeResponse = (value: unknown): SafeIntentState | null => {
 };
 
 const errorMessage = (status: number) => {
+  if (status === 429) return GENERIC_RATE_LIMIT_MESSAGE;
   if (status === 400) return "Check the amount and try again.";
   if (status === 422) return "That amount is below the current minimum. Try a larger amount.";
   if (status === 401) return "This checkout is unavailable in this browser. Please try again.";
@@ -143,6 +145,7 @@ const errorMessage = (status: number) => {
 };
 
 const artistNoteErrorMessage = (status: number) => {
+  if (status === 429) return GENERIC_RATE_LIMIT_MESSAGE;
   if (status === 422) return "Keep your note to 1,000 characters or fewer.";
   if (status === 401) return "This checkout is unavailable in this browser. Please try again.";
   if (status === 403) return "This request couldn't be verified. Please try again.";

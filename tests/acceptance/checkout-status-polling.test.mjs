@@ -301,3 +301,29 @@ test("expired, not-started, and unavailable responses never poll", async () => {
   assert.equal(clock.pending(), 0);
   poller.stop();
 });
+
+test("rate limiting stops automatic polling and publishes a retry-later state", async () => {
+  const states = [];
+  const clock = fakeClock();
+  let calls = 0;
+  const poller = createCheckoutStatusPoller({
+    clock,
+    onState: (state) => states.push(state),
+    readStatus: async () => {
+      calls += 1;
+      return { retryAfterSeconds: 42, state: "rate_limited" };
+    },
+    visibility: fakeVisibility(),
+  });
+
+  poller.start();
+  await flush();
+  assert.equal(calls, 1);
+  assert.deepEqual(states.at(-1), {
+    phase: "rate_limited",
+    retryAfterSeconds: 42,
+  });
+  await clock.tick(120_000);
+  assert.equal(calls, 1);
+  poller.stop();
+});

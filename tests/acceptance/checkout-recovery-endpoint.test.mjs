@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   checkoutRecoveryHandler,
-  storefrontCheckoutIntentEndpoints,
+  createStorefrontCheckoutIntentEndpoints,
 } from "../../src/server/storefront/checkoutIntentEndpoints.ts";
 import { StorefrontApiError } from "../../src/server/storefront/storefrontApiError.ts";
 
@@ -159,7 +159,9 @@ test("the optional route accepts no identifiers and protected current stays stri
   );
   assert.equal(queryResponse.status, 400);
 
-  const current = storefrontCheckoutIntentEndpoints.find(
+  const current = createStorefrontCheckoutIntentEndpoints(
+    async () => ({ allowed: true, retryAfterSeconds: 1 }),
+  ).find(
     ({ method, path }) =>
       method === "get" && path === "/storefront/checkout-intents/current",
   );

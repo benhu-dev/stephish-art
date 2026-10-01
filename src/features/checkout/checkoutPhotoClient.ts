@@ -1,4 +1,5 @@
 import { parseSafeResponse, type SafeIntentState } from "./checkoutIntentClient";
+import { readRetryAfterSeconds } from "./checkoutRateLimitClient";
 
 const CURRENT = "/api/storefront/checkout-intents/current";
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -8,6 +9,7 @@ export type PhotoRequestResult =
   | { kind: "deleted" }
   | { kind: "unavailable" }
   | { kind: "uncertain" }
+  | { kind: "rate_limited"; retryAfterSeconds: number | null }
   | { kind: "failed" };
 
 const unavailable = (status: number) => status === 401 || status === 410;
@@ -29,6 +31,9 @@ export async function uploadPhoto(
     const response = await fetchImpl(`${CURRENT}/uploads`, {
       ...requestOptions(signal), body: form, method: "POST",
     });
+    if (response.status === 429) {
+      return { kind: "rate_limited", retryAfterSeconds: readRetryAfterSeconds(response) };
+    }
     if (unavailable(response.status)) return { kind: "unavailable" };
     if (response.status === 201) {
       const state = parseSafeResponse(await response.json());
@@ -49,6 +54,9 @@ export async function deletePhoto(
     const response = await fetchImpl(`${CURRENT}/uploads/${uploadId}`, {
       ...requestOptions(signal), method: "DELETE",
     });
+    if (response.status === 429) {
+      return { kind: "rate_limited", retryAfterSeconds: readRetryAfterSeconds(response) };
+    }
     if (unavailable(response.status)) return { kind: "unavailable" };
     if (response.status === 204) return { kind: "deleted" };
     return { kind: response.status >= 500 || response.status === 404 ? "uncertain" : "failed" };
@@ -64,6 +72,9 @@ export async function readCurrentPhotos(
     const response = await fetchImpl(CURRENT, {
       ...requestOptions(signal), method: "GET",
     });
+    if (response.status === 429) {
+      return { kind: "rate_limited", retryAfterSeconds: readRetryAfterSeconds(response) };
+    }
     if (unavailable(response.status)) return { kind: "unavailable" };
     if (response.status !== 200) return { kind: "uncertain" };
     const state = parseSafeResponse(await response.json());

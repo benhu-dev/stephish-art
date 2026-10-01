@@ -3,6 +3,7 @@ export const CHECKOUT_STATUS_POLL_LIMIT_MS = 60_000;
 
 export type CheckoutStatusResponse =
   | { state: "expired" | "not_started" | "processing" }
+  | { retryAfterSeconds: number | null; state: "rate_limited" }
   | {
       currency: "usd";
       shippingAmountCents: number;
@@ -14,6 +15,7 @@ export type CheckoutStatusResponse =
 export type CheckoutStatusViewState =
   | { phase: "expired" | "loading" | "not_started" | "processing" }
   | { phase: "timeout" | "unavailable" }
+  | { phase: "rate_limited"; retryAfterSeconds: number | null }
   | ({ phase: "confirmed" } & Omit<
       Extract<CheckoutStatusResponse, { state: "confirmed" }>,
       "state"
@@ -121,6 +123,13 @@ export const createCheckoutStatusPoller = ({
             publish({ phase: "processing" });
             schedule();
           }
+          break;
+        case "rate_limited":
+          clearTimer();
+          publish({
+            phase: "rate_limited",
+            retryAfterSeconds: status.retryAfterSeconds,
+          });
           break;
       }
     } catch (error) {

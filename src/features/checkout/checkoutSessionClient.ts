@@ -1,3 +1,8 @@
+import {
+  GENERIC_RATE_LIMIT_MESSAGE,
+  readRetryAfterSeconds,
+} from "./checkoutRateLimitClient";
+
 const CHECKOUT_SESSION_ENDPOINT =
   "/api/storefront/checkout-intents/current/checkout-session";
 const CHECKOUT_ERROR = "We couldn't open secure checkout. Please try again.";
@@ -9,7 +14,7 @@ export type CheckoutSessionResult =
   | { checkoutUrl: string; kind: "ready" }
   | { kind: "aborted" }
   | { kind: "fresh" | "processing" }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; message: string; retryAfterSeconds?: number | null };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -61,6 +66,13 @@ export async function requestCheckoutSession(
       method: "POST",
       ...(signal ? { signal } : {}),
     });
+    if (response.status === 429) {
+      return {
+        kind: "failed",
+        message: GENERIC_RATE_LIMIT_MESSAGE,
+        retryAfterSeconds: readRetryAfterSeconds(response),
+      };
+    }
     if (response.status === 409) return { kind: "processing" };
     if (response.status === 401 || response.status === 410) return { kind: "fresh" };
     if (response.status !== 200 && response.status !== 201) {

@@ -14,6 +14,7 @@ import { abandonCurrentCheckout, readCurrentCheckoutState } from "../checkoutRec
 import { requestCheckoutSession } from "../checkoutSessionClient";
 import { deletePhoto, readCurrentPhotos, uploadPhoto } from "../checkoutPhotoClient";
 import { createCheckoutPhotoPreviewManager } from "../checkoutPhotoPreviewClient";
+import { GENERIC_RATE_LIMIT_MESSAGE } from "../checkoutRateLimitClient";
 import type { SafeUpload } from "../checkoutIntentClient";
 import { CheckoutAmountStep } from "./CheckoutAmountStep";
 import { CheckoutPhotoStep, type PhotoEntry } from "./CheckoutPhotoStep";
@@ -151,6 +152,9 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
           }
           return;
         }
+        if (result.kind === "rate_limited") {
+          setPhotoError(GENERIC_RATE_LIMIT_MESSAGE);
+        }
         const updated = photosRef.current.map((photo) =>
           photo.server?.id === uploadId
             ? {
@@ -261,6 +265,8 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         resetCheckoutClientState();
       } else if (result.kind === "failed") {
         setAmountError("We couldn't restore your checkout. You can try saving your amount again.");
+      } else if (result.kind === "rate_limited") {
+        setAmountError(GENERIC_RATE_LIMIT_MESSAGE);
       }
     }).finally(() => {
       if (requestControllerRef.current === controller) {
@@ -356,6 +362,13 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         }
       }
       if (result.kind === "unavailable") { unavailableIntent(); return false; }
+      if (result.kind === "rate_limited") {
+        commitPhotos(photosRef.current.map((photo) =>
+          photo.position === position ? { ...photo, status: "confirmed" } : photo,
+        ));
+        setPhotoError(GENERIC_RATE_LIMIT_MESSAGE);
+        return false;
+      }
       if (result.kind === "deleted") {
         previewManagerRef.current?.release(entry.server.id);
         if (entry.local) URL.revokeObjectURL(entry.local.previewUrl);
@@ -410,6 +423,10 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
             resetCheckoutClientState("That checkout is no longer available. Start a fresh order below.");
             return;
           }
+          if (current.kind === "rate_limited") {
+            setAmountError(GENERIC_RATE_LIMIT_MESSAGE);
+            return;
+          }
         }
         if (result.reason === "fresh") {
           resetCheckoutClientState("That checkout is no longer available. Start a fresh order below.");
@@ -444,6 +461,10 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
       if (photosRef.current.some(({ status }) => status === "uncertain")) {
         const current = await readCurrentPhotos();
         if (current.kind === "unavailable") { unavailableIntent(); return; }
+        if (current.kind === "rate_limited") {
+          setPhotoError(GENERIC_RATE_LIMIT_MESSAGE);
+          return;
+        }
         if (current.kind !== "confirmed") {
           setPhotoError("We couldn't check your photos. Please check your connection and try again.");
           return;
@@ -461,6 +482,13 @@ export function ArtisticCheckoutModal({ onClose, open, theme, triggerRef }: Prop
         let result = await uploadPhoto(entry.local.file, position);
         if (result.kind === "uncertain") result = await readCurrentPhotos();
         if (result.kind === "unavailable") { unavailableIntent(); return; }
+        if (result.kind === "rate_limited") {
+          commitPhotos(photosRef.current.map((photo) =>
+            photo.position === position ? { ...photo, status: "local" } : photo,
+          ));
+          setPhotoError(GENERIC_RATE_LIMIT_MESSAGE);
+          return;
+        }
         if (result.kind === "confirmed") {
           mergeUploads(result.state.uploads);
           if (result.state.uploads.some((upload) =>

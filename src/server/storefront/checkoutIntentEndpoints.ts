@@ -43,6 +43,11 @@ import {
   StorefrontApiError,
   unauthorizedIntentError,
 } from "./storefrontApiError";
+import { createRateLimitedStorefrontHandler } from "./storefrontRateLimitEndpoint";
+import {
+  enforceStorefrontRateLimit,
+  type StorefrontRateLimitAction,
+} from "./storefrontRateLimit";
 
 const noStoreHeaders = () => new Headers({ "Cache-Control": "no-store" });
 const isProduction = () => process.env.NODE_ENV === "production";
@@ -299,55 +304,118 @@ export const abandonCheckoutIntentHandler = async (
   }
 };
 
-export const storefrontCheckoutIntentEndpoints: Endpoint[] = [
+const networkAction = (action: StorefrontRateLimitAction) => () => ({ action });
+
+const credentialAction = (action: StorefrontRateLimitAction) =>
+  (request: PayloadRequest) => {
+    const parsed = parseCheckoutIntentCookie(request.headers.get("cookie"));
+    return {
+      action,
+      ...(parsed.kind === "valid" ? { credential: parsed.credential } : {}),
+    };
+  };
+
+const amountAction = (request: PayloadRequest) => {
+  const parsed = parseCheckoutIntentCookie(request.headers.get("cookie"));
+  return parsed.kind === "valid"
+    ? { action: "amountSave" as const, credential: parsed.credential }
+    : { action: "intentCreate" as const };
+};
+
+export const createStorefrontCheckoutIntentEndpoints = (
+  enforce: typeof enforceStorefrontRateLimit = enforceStorefrontRateLimit,
+): Endpoint[] => [
   {
-    handler: createOrResumeHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: amountAction,
+      enforce,
+      handler: createOrResumeHandler,
+    }),
     method: "post",
     path: "/storefront/checkout-intents",
   },
   {
-    handler: currentHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: networkAction("currentRead"),
+      enforce,
+      handler: currentHandler,
+    }),
     method: "get",
     path: "/storefront/checkout-intents/current",
   },
   {
-    handler: checkoutRecoveryHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: networkAction("currentRead"),
+      enforce,
+      handler: checkoutRecoveryHandler,
+    }),
     method: "get",
     path: "/storefront/checkout-intents/current/recovery",
   },
   {
-    handler: artistNoteHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("noteSave"),
+      enforce,
+      handler: artistNoteHandler,
+    }),
     method: "put",
     path: "/storefront/checkout-intents/current/artist-note",
   },
   {
-    handler: checkoutStatusHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("statusPoll"),
+      enforce,
+      handler: checkoutStatusHandler,
+    }),
     method: "get",
     path: "/storefront/checkout-intents/current/status",
   },
   {
-    handler: uploadHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("photoUpload"),
+      enforce,
+      handler: uploadHandler,
+    }),
     method: "post",
     path: "/storefront/checkout-intents/current/uploads",
   },
   {
-    handler: deleteUploadHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("photoRemove"),
+      enforce,
+      handler: deleteUploadHandler,
+    }),
     method: "delete",
     path: "/storefront/checkout-intents/current/uploads/:uploadId",
   },
   {
-    handler: previewUploadHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("photoPreview"),
+      enforce,
+      handler: previewUploadHandler,
+    }),
     method: "get",
     path: "/storefront/checkout-intents/current/uploads/:uploadId/preview",
   },
   {
-    handler: checkoutSessionHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("checkoutSession"),
+      enforce,
+      handler: checkoutSessionHandler,
+    }),
     method: "post",
     path: "/storefront/checkout-intents/current/checkout-session",
   },
   {
-    handler: abandonCheckoutIntentHandler,
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("abandon"),
+      enforce,
+      handler: abandonCheckoutIntentHandler,
+    }),
     method: "post",
     path: "/storefront/checkout-intents/current/abandon",
   },
 ];
+
+export const storefrontCheckoutIntentEndpoints =
+  createStorefrontCheckoutIntentEndpoints();

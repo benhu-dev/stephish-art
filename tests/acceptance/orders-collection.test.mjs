@@ -22,10 +22,10 @@ test("Orders has exactly the approved non-auth field contract", () => {
     "amountCents",
     "artistNote",
     "checkoutIntent",
-    "completedAt",
     "contactEmail",
     "currency",
     "customer",
+    "deliveredAt",
     "orderStatus",
     "paidAt",
     "paymentStatus",
@@ -39,7 +39,6 @@ test("Orders has exactly the approved non-auth field contract", () => {
     "stripePaymentIntentId",
     "trackingCarrier",
     "trackingNumber",
-    "trackingUrl",
   ]);
 
   assert.equal(fieldsByName.customer.type, "relationship");
@@ -68,9 +67,9 @@ test("Orders has exactly the approved non-auth field contract", () => {
   assert.equal(fieldsByName.shippedAt.type, "date");
   assert.equal(fieldsByName.shippedAt.required, undefined);
   assert.equal(fieldsByName.shippedAt.admin.date.pickerAppearance, "dayAndTime");
-  assert.equal(fieldsByName.completedAt.type, "date");
-  assert.equal(fieldsByName.completedAt.required, undefined);
-  assert.equal(fieldsByName.completedAt.admin.date.pickerAppearance, "dayAndTime");
+  assert.equal(fieldsByName.deliveredAt.type, "date");
+  assert.equal(fieldsByName.deliveredAt.required, undefined);
+  assert.equal(fieldsByName.deliveredAt.admin.date.pickerAppearance, "dayAndTime");
 });
 
 test("Orders defines the exact currency and status values", () => {
@@ -79,14 +78,13 @@ test("Orders defines the exact currency and status values", () => {
   assert.equal(fieldsByName.currency.required, true);
 
   assert.deepEqual(optionValues(fieldsByName.orderStatus), [
-    "new",
+    "unfulfilled",
     "in_progress",
     "ready_to_ship",
     "shipped",
-    "completed",
-    "cancelled",
+    "delivered",
   ]);
-  assert.equal(fieldsByName.orderStatus.defaultValue, "new");
+  assert.equal(fieldsByName.orderStatus.defaultValue, "unfulfilled");
   assert.equal(fieldsByName.orderStatus.required, true);
 
   assert.deepEqual(optionValues(fieldsByName.paymentStatus), [
@@ -180,19 +178,14 @@ test("Orders has the exact shipping and fulfillment contract", async () => {
   assert.equal(await shippingFields.country.validate("US"), true);
   assert.notEqual(await shippingFields.country.validate("USA"), true);
 
-  assert.equal(fieldsByName.trackingCarrier.maxLength, 100);
-  assert.equal(fieldsByName.trackingNumber.maxLength, 200);
-  assert.equal(fieldsByName.trackingUrl.type, "text");
-  assert.equal(await fieldsByName.trackingUrl.validate(undefined), true);
-  assert.equal(
-    await fieldsByName.trackingUrl.validate("https://example.invalid/track"),
-    true,
-  );
-  assert.notEqual(await fieldsByName.trackingUrl.validate("not a url"), true);
-  assert.notEqual(
-    await fieldsByName.trackingUrl.validate("javascript:alert(1)"),
-    true,
-  );
+  assert.equal(fieldsByName.trackingCarrier.type, "select");
+  assert.deepEqual(optionValues(fieldsByName.trackingCarrier), [
+    "usps",
+    "ups",
+    "fedex",
+    "other",
+  ]);
+  assert.equal(fieldsByName.trackingNumber.maxLength, 64);
 });
 
 test("Orders exposes the approved Admin columns", () => {
@@ -242,13 +235,7 @@ test("Orders immutable payment fields deny ordinary authenticated updates", asyn
     "stripeDisputeStatus",
   ];
   const mutableFields = [
-    "orderStatus",
     "shippingAddress",
-    "trackingCarrier",
-    "trackingNumber",
-    "trackingUrl",
-    "shippedAt",
-    "completedAt",
   ];
 
   for (const name of immutableFields) {
@@ -257,5 +244,16 @@ test("Orders immutable payment fields deny ordinary authenticated updates", asyn
   }
   for (const name of mutableFields) {
     assert.equal(fieldsByName[name].access?.update, undefined);
+  }
+
+  for (const name of [
+    "orderStatus",
+    "trackingCarrier",
+    "trackingNumber",
+    "shippedAt",
+    "deliveredAt",
+  ]) {
+    assert.equal(typeof fieldsByName[name].access.update, "function");
+    assert.equal(await fieldsByName[name].access.update(authenticated), false);
   }
 });

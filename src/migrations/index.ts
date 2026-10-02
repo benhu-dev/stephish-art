@@ -11,6 +11,7 @@ import * as migration_20260924_075033_persist_artist_note from './20260924_07503
 import * as migration_20260927_223710_add_email_outbox from './20260927_223710_add_email_outbox';
 import * as migration_20261001_080010_add_storefront_rate_limits from './20261001_080010_add_storefront_rate_limits';
 import * as migration_20261001_084550_add_stripe_refund_dispute_reconciliation from './20261001_084550_add_stripe_refund_dispute_reconciliation';
+import * as migration_20261002_105432_add_order_fulfillment from './20261002_105432_add_order_fulfillment';
 
 export const migrations = [
   {
@@ -76,6 +77,11 @@ export const migrations = [
   {
     up: migration_20261001_084550_add_stripe_refund_dispute_reconciliation.up,
     down: migration_20261001_084550_add_stripe_refund_dispute_reconciliation.down,
-    name: '20261001_084550_add_stripe_refund_dispute_reconciliation'
+    name: '20261001_084550_add_stripe_refund_dispute_reconciliation',
+  },
+  {
+    up: migration_20261002_105432_add_order_fulfillment.up,
+    down: migration_20261002_105432_add_order_fulfillment.down,
+    name: '20261002_105432_add_order_fulfillment'
   },
 ];

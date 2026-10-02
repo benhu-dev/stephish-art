@@ -172,7 +172,7 @@ try {
       contactEmail: `unit-2-9-${runID}@example.invalid`,
       currency: "usd",
       customer: customer.id,
-      orderStatus: "new",
+      orderStatus: "unfulfilled",
       paidAt: new Date().toISOString(),
       paymentStatus: "paid",
       shippingAddress: {

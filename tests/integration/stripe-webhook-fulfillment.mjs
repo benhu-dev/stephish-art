@@ -904,7 +904,7 @@ try {
       contactEmail: historical.customerEmail,
       currency: "usd",
       customer: historicalCustomer.id,
-      orderStatus: "new",
+      orderStatus: "unfulfilled",
       paidAt: new Date(1_800_000_000 * 1000).toISOString(),
       paymentStatus: "paid",
       shippingAddress: {

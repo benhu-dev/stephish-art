@@ -13,6 +13,7 @@ import { StripeEvents } from "./collections/StripeEvents";
 import { Users } from "./collections/Users";
 import { CheckoutSettings } from "./globals/CheckoutSettings";
 import { storefrontCheckoutIntentEndpoints } from "./server/storefront/checkoutIntentEndpoints";
+import { orderFulfillmentEndpoints } from "./server/orders/orderFulfillmentEndpoint";
 import {
   getOrderUploadStorageOptions,
   ORDER_UPLOAD_MAX_FILE_SIZE_BYTES,
@@ -49,7 +50,10 @@ export default buildConfig({
     OrderUploads,
     StripeEvents,
   ],
-  endpoints: storefrontCheckoutIntentEndpoints,
+  endpoints: [
+    ...storefrontCheckoutIntentEndpoints,
+    ...orderFulfillmentEndpoints,
+  ],
   globals: [CheckoutSettings],
   db: postgresAdapter({
     pool: {

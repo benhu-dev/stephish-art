@@ -227,7 +227,7 @@ export const fulfillPaidStripeSession = async ({
         contactEmail: session.customerEmail,
         currency: "usd",
         customer: customer.id,
-        orderStatus: "new",
+        orderStatus: "unfulfilled",
         paidAt: session.eventCreatedAt,
         paymentStatus: "paid",
         refundedAmountCents: 0,

@@ -115,7 +115,7 @@ const createFixture = async ({ amountCents = 900, withRelatedRecords = false, pa
       contactEmail: customer.email,
       currency: "usd",
       customer: customer.id,
-      orderStatus: "new",
+      orderStatus: "unfulfilled",
       paidAt: now.toISOString(),
       paymentStatus: "paid",
       refundedAmountCents: 0,

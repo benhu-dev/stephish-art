@@ -190,7 +190,7 @@ export interface Order {
   stripeCheckoutSessionId: string;
   stripePaymentIntentId: string;
   paidAt: string;
-  orderStatus: 'new' | 'in_progress' | 'ready_to_ship' | 'shipped' | 'completed' | 'cancelled';
+  orderStatus: 'unfulfilled' | 'in_progress' | 'ready_to_ship' | 'shipped' | 'delivered';
   paymentStatus: 'paid' | 'partially_refunded' | 'refunded' | 'disputed';
   refundedAmountCents: number;
   refundState: 'none' | 'partial' | 'full';
@@ -216,11 +216,10 @@ export interface Order {
     postalCode?: string | null;
     country: string;
   };
-  trackingCarrier?: string | null;
+  trackingCarrier?: ('usps' | 'ups' | 'fedex' | 'other') | null;
   trackingNumber?: string | null;
-  trackingUrl?: string | null;
   shippedAt?: string | null;
-  completedAt?: string | null;
+  deliveredAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -506,9 +505,8 @@ export interface OrdersSelect<T extends boolean = true> {
       };
   trackingCarrier?: T;
   trackingNumber?: T;
-  trackingUrl?: T;
   shippedAt?: T;
-  completedAt?: T;
+  deliveredAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

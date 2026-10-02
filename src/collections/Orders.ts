@@ -5,6 +5,10 @@ import {
   normalizeArtistNote,
 } from "../server/storefront/artistNote";
 import { STRIPE_DISPUTE_STATUSES } from "../server/stripe/stripeWebhookContract";
+import {
+  FULFILLMENT_STATES,
+  TRACKING_CARRIERS,
+} from "../server/orders/orderFulfillmentContract";
 
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   Boolean(user);
@@ -142,15 +146,17 @@ export const Orders: CollectionConfig = {
     {
       name: "orderStatus",
       type: "select",
-      defaultValue: "new",
-      options: [
-        { label: "New", value: "new" },
-        { label: "In progress", value: "in_progress" },
-        { label: "Ready to ship", value: "ready_to_ship" },
-        { label: "Shipped", value: "shipped" },
-        { label: "Completed", value: "completed" },
-        { label: "Cancelled", value: "cancelled" },
-      ],
+      access: {
+        update: denyAccess,
+      },
+      defaultValue: "unfulfilled",
+      options: FULFILLMENT_STATES.map((value) => ({
+        label: value
+          .split("_")
+          .map((part) => part[0].toUpperCase() + part.slice(1))
+          .join(" "),
+        value,
+      })),
       required: true,
     },
     {
@@ -275,46 +281,37 @@ export const Orders: CollectionConfig = {
     },
     {
       name: "trackingCarrier",
-      type: "text",
-      maxLength: 100,
+      type: "select",
+      access: {
+        update: denyAccess,
+      },
+      options: TRACKING_CARRIERS.map((value) => ({
+        label: value === "other" ? "Other" : value.toUpperCase(),
+        value,
+      })),
     },
     {
       name: "trackingNumber",
       type: "text",
-      maxLength: 200,
-    },
-    {
-      name: "trackingUrl",
-      type: "text",
-      validate: (value: unknown) => {
-        if (value === null || value === undefined || value === "") {
-          return true;
-        }
-
-        if (typeof value !== "string") {
-          return "Tracking URL must be a valid HTTP or HTTPS URL.";
-        }
-
-        try {
-          const url = new URL(value);
-
-          return (
-            ["http:", "https:"].includes(url.protocol) ||
-            "Tracking URL must be a valid HTTP or HTTPS URL."
-          );
-        } catch {
-          return "Tracking URL must be a valid HTTP or HTTPS URL.";
-        }
+      access: {
+        update: denyAccess,
       },
+      maxLength: 64,
     },
     {
       name: "shippedAt",
       type: "date",
+      access: {
+        update: denyAccess,
+      },
       admin: dateAndTimeAdmin,
     },
     {
-      name: "completedAt",
+      name: "deliveredAt",
       type: "date",
+      access: {
+        update: denyAccess,
+      },
       admin: dateAndTimeAdmin,
     },
   ],

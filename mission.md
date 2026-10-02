@@ -1,89 +1,104 @@
-# Phase 2 — Unit 2.19: Stripe Refund and Dispute Reconciliation
+# Phase 2 — Unit 2.20: Order Fulfillment and Tracking Foundation
 
 ## Outcome
 
-Keep an existing paid Order synchronized with authoritative Stripe refund and dispute state.
+Add a secure, administrator-only backend workflow for moving a paid Order through production and shipping states while recording optional carrier tracking information.
 
-This Unit observes Stripe activity only. Refunds and dispute responses remain initiated manually in Stripe. Do not add an Admin UI, storefront refund endpoint, automatic refund, shipment workflow, or new email.
+Do not build a custom Admin Dashboard or send shipment email in this Unit.
 
 ## Required behavior
 
-1. Extend the existing signed Stripe webhook handler to support only:
+1. Inspect the existing Order schema and reuse compatible fields. Do not create duplicate payment, shipping-address, refund, or dispute fields.
 
-   - `refund.created`
-   - `refund.updated`
-   - `refund.failed`
-   - `charge.refunded`
-   - `charge.dispute.created`
-   - `charge.dispute.updated`
-   - `charge.dispute.closed`
+2. Add a fulfillment state independent from payment/refund state:
 
-2. Preserve the existing raw-body limit, signature verification, generic responses, event ledger, Test-mode restrictions, and ignored-event behavior.
+   - `unfulfilled`
+   - `in_progress`
+   - `ready_to_ship`
+   - `shipped`
+   - `delivered`
 
-3. Never trust the event snapshot alone. Retrieve the current Stripe Refund, Charge, PaymentIntent, or Dispute as required and verify that it belongs to the exact stored paid Order.
+3. New paid Orders begin as `unfulfilled`.
 
-4. Perform all Stripe calls outside database transactions.
+4. Allow only these forward transitions:
 
-5. Add only the minimum Order reconciliation fields required to represent:
+   - `unfulfilled` → `in_progress`
+   - `in_progress` → `ready_to_ship`
+   - `ready_to_ship` → `shipped`
+   - `shipped` → `delivered`
 
-   - refunded amount in integer cents;
-   - refund state: `none`, `partial`, or `full`;
-   - current Stripe dispute status;
-   - optional internal Stripe dispute identifier if required for reconciliation.
+5. Same-state retries with identical data must be idempotent. Reverse transitions, skipped states, conflicting retries, and terminal-state changes must be rejected.
 
-6. Monetary invariants:
+6. Add only the minimum shipping fields required:
 
-   - refunded amount must be between zero and the Order total;
-   - only successful refunds count toward the refunded amount;
-   - multiple partial refunds must converge on the authoritative aggregate;
-   - failed or pending refunds must never erase an earlier successful refund;
-   - a full refund must not delete the Order, Customer, uploads, or private Storage objects.
+   - carrier: `usps`, `ups`, `fedex`, or `other`;
+   - normalized tracking number;
+   - server-authored shipped timestamp;
+   - server-authored delivered timestamp.
 
-7. Use a short locked transaction to update the Order and Stripe Event ledger atomically.
+7. Carrier and tracking number are optional, but they must be supplied together. Do not accept or persist client-provided tracking URLs.
 
-8. Replay, concurrency, duplicate delivery, and out-of-order delivery must converge on one correct Order state without creating another Order, Customer, upload association, or email job.
+8. Tracking data may be added or corrected only before the first successful transition to `shipped`. After shipment it becomes immutable.
 
-9. Unknown Orders, mismatched Stripe objects, live-mode objects, invalid monetary state, or unverifiable ownership must be rejected safely without Order mutation.
+9. Add a controlled administrator endpoint:
 
-10. A dispute must update the stored dispute status but must not automatically refund, delete, email, or alter fulfillment data.
+   `PATCH /api/admin/orders/:orderId/fulfillment`
 
-11. Existing paid-order cleanup protection must remain unchanged. Refunded or disputed Orders and their uploads remain protected.
+   It must require the existing authenticated Payload administrator session, same-origin requests, JSON content type, no query parameters, and an exact request shape containing expected current state, requested next state, and optional tracking data.
 
-12. Store and log no webhook body, customer PII, shipping address, email content, Storage key, signature, secret, or provider response.
+10. Use a short PostgreSQL transaction with a row lock. The expected current state must prevent stale or concurrent updates. Return a safe conflict response when another transition wins.
+
+11. The server—not the browser—sets `shippedAt` and `deliveredAt` in UTC.
+
+12. Before advancing fulfillment, require an existing paid Order. Block new forward transitions when:
+
+   - the Order is fully refunded;
+   - an active or lost Stripe dispute makes fulfillment unsafe;
+   - payment/order state is inconsistent.
+
+   A partial refund or a dispute resolved as won may continue.
+
+13. Never modify payment snapshots, Customer data, address snapshots, amount fields, uploads, Stripe identifiers, refund totals, dispute history, or existing email jobs.
+
+14. New fields must remain unavailable to anonymous REST and GraphQL writes. No public storefront endpoint may expose fulfillment or tracking data.
+
+15. Logs and responses must not contain customer PII, shipping addresses, artist notes, upload metadata, payment identifiers, or complete request bodies.
 
 ## Acceptance
 
 Cover at minimum:
 
-- partial refund;
-- multiple partial refunds;
-- full refund;
-- failed refund after a successful refund;
-- duplicate and out-of-order events;
-- concurrent delivery;
-- dispute created, updated, won, and lost;
-- unknown and mismatched payment objects;
+- exact transition matrix;
+- same-state idempotency;
+- reverse, skipped, stale, and concurrent transitions;
+- administrator authentication and same-origin enforcement;
+- malformed ID, query, content type, and body rejection;
+- tracking normalization and carrier/tracking pairing;
+- tracking immutability after shipment;
+- server-authored UTC timestamps;
+- full-refund and dispute blocking;
+- partial-refund and won-dispute continuation;
+- immutable financial/customer/upload fields;
 - transaction rollback;
-- event-ledger replay;
-- unchanged Order/Customer/upload/email counts;
-- anonymous REST and GraphQL access denial for new fields;
-- one isolated Stripe Sandbox refund lifecycle;
-- schema migration, generated Payload types, TypeScript, changed-file ESLint, production build, and diff check.
+- anonymous REST and GraphQL denial;
+- no Stripe, Resend, Storage, or email-outbox side effects;
+- isolated database lifecycle with exact baseline restoration;
+- migration, generated Payload types, TypeScript, changed-file ESLint, one production build, and diff check.
 
-Use focused tests only. Do not run scene, viewport, full browser, Resend, cleanup, or unrelated storefront suites.
+Use focused tests only. Do not run Stripe Sandbox, Resend, browser, scene, viewport, Storage lifecycle, cleanup, or full regression suites.
 
 ## Boundaries
 
-Do not introduce:
+Do not add:
 
-- refund initiation APIs;
-- Admin Dashboard work;
-- customer refund emails;
-- automatic shipment cancellation;
-- dispute evidence submission;
-- public payment identifiers;
-- new dependencies;
-- live-mode activity;
+- custom Admin UI;
+- customer-facing tracking endpoints;
+- shipment email;
+- carrier APIs or automatic delivery polling;
+- label purchasing;
+- shipment cancellation;
+- automatic refunds;
+- dependencies or environment variables;
 - unrelated frontend changes.
 
 Do not commit or push. Preserve user-owned changes and report the starting and ending HEAD.

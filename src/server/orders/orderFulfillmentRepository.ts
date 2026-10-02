@@ -1,5 +1,6 @@
 import { sql } from "@payloadcms/db-postgres";
 import type { PayloadRequest } from "payload";
+import { createCustomerShippedEmailOutboxJob } from "../email/emailOutbox";
 
 import {
   beginStorefrontTransaction,
@@ -37,6 +38,7 @@ export type FulfillmentUpdate = {
 };
 
 export type FulfillmentTransaction = {
+  enqueueShipmentEmail: (orderId: number) => Promise<void>;
   lockOrder: (orderId: number) => Promise<LockedFulfillmentOrder | null>;
   updateOrder: (orderId: number, update: FulfillmentUpdate) => Promise<void>;
 };
@@ -94,6 +96,8 @@ export const orderFulfillmentRepository: FulfillmentRepository = {
     try {
       transaction = await beginStorefrontTransaction(request);
       const result = await operation({
+        enqueueShipmentEmail: (orderId) =>
+          createCustomerShippedEmailOutboxJob({ orderId, request }),
         lockOrder: (orderId) => lockOrder(transaction!, orderId),
         updateOrder: async (orderId, update) => {
           await request.payload.update({

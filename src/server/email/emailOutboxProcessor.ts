@@ -4,6 +4,7 @@ import type {
   EmailOutboxRepository,
   EmailOutboxSummary,
 } from "./emailDeliveryTypes";
+import type { OrderEmailOutboxKind } from "./emailOutbox";
 import {
   buildOrderEmailMessage,
   emailIdempotencyKey,
@@ -32,12 +33,14 @@ export const processEmailOutbox = async ({
   gateway,
   now = new Date(),
   orderId,
+  kind,
   repository,
 }: {
   configuration: EmailDeliveryConfiguration;
   gateway?: EmailGateway;
   now?: Date;
   orderId?: number;
+  kind?: OrderEmailOutboxKind;
   repository: EmailOutboxRepository;
 }): Promise<EmailOutboxSummary> => {
   const summary = emptySummary();
@@ -52,6 +55,7 @@ export const processEmailOutbox = async ({
     leaseExpiresBefore: new Date(now.getTime() - EMAIL_OUTBOX_LEASE_MILLISECONDS),
     limit: EMAIL_OUTBOX_BATCH_SIZE,
     orderId,
+    kind,
   });
   summary.failed = exhausted;
   summary.scanned = exhausted;
@@ -61,6 +65,7 @@ export const processEmailOutbox = async ({
     limit: EMAIL_OUTBOX_BATCH_SIZE - exhausted,
     now,
     orderId,
+    kind,
   });
   summary.scanned += jobs.length;
 

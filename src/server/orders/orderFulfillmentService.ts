@@ -1,4 +1,5 @@
 import type { PayloadRequest } from "payload";
+import { deliverEmailOutbox } from "../email/emailOutboxService";
 
 import {
   FULFILLMENT_STATES,
@@ -96,10 +97,15 @@ const responseFor = (order: LockedFulfillmentOrder, idempotent: boolean) => ({
 });
 
 export type FulfillmentTransitionProbe = {
+  afterEnqueue?: () => Promise<void> | void;
   afterUpdate?: () => Promise<void> | void;
 };
 
+const deliverShipmentEmail = (orderId: number, request: PayloadRequest) =>
+  deliverEmailOutbox({ kind: "customer_shipped", orderId, request });
+
 export const transitionOrderFulfillment = async ({
+  attemptOrderEmailDelivery = deliverShipmentEmail,
   input,
   now = new Date(),
   orderId,
@@ -107,6 +113,10 @@ export const transitionOrderFulfillment = async ({
   repository = orderFulfillmentRepository,
   request,
 }: {
+  attemptOrderEmailDelivery?: (
+    orderId: number,
+    request: PayloadRequest,
+  ) => Promise<unknown>;
   input: FulfillmentTransitionInput;
   now?: Date;
   orderId: number;
@@ -118,7 +128,7 @@ export const transitionOrderFulfillment = async ({
     throw new OrderFulfillmentError(500, "INTERNAL_ERROR");
   }
 
-  return repository.transaction(request, async (transaction) => {
+  const transition = await repository.transaction(request, async (transaction) => {
     const order = await transaction.lockOrder(orderId);
     if (!order) throw new OrderFulfillmentError(404, "ORDER_NOT_FOUND");
 
@@ -140,7 +150,7 @@ export const transitionOrderFulfillment = async ({
       if (!replayedForwardTransition && !exactSameStateRetry) {
         throw new OrderFulfillmentError(409, "FULFILLMENT_CONFLICT");
       }
-      return responseFor(order, true);
+      return { response: responseFor(order, true), shippedNow: false };
     }
 
     if (order.orderStatus !== input.expectedCurrentState) {
@@ -175,15 +185,33 @@ export const transitionOrderFulfillment = async ({
     await transaction.updateOrder(order.id, update);
     await probe.afterUpdate?.();
 
-    return responseFor(
-      {
-        ...order,
-        ...update,
-        trackingCarrier:
-          update.trackingCarrier ?? order.trackingCarrier,
-        trackingNumber: update.trackingNumber ?? order.trackingNumber,
-      },
-      false,
-    );
+    const shippedNow = input.requestedNextState === "shipped";
+    if (shippedNow) {
+      await transaction.enqueueShipmentEmail(order.id);
+      await probe.afterEnqueue?.();
+    }
+
+    return {
+      response: responseFor(
+        {
+          ...order,
+          ...update,
+          trackingCarrier:
+            update.trackingCarrier ?? order.trackingCarrier,
+          trackingNumber: update.trackingNumber ?? order.trackingNumber,
+        },
+        false,
+      ),
+      shippedNow,
+    };
   });
+
+  if (transition.shippedNow) {
+    try {
+      await attemptOrderEmailDelivery(orderId, request);
+    } catch {
+      // The committed shipment and durable retryable outbox job are authoritative.
+    }
+  }
+  return transition.response;
 };

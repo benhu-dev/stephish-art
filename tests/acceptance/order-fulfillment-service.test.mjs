@@ -26,11 +26,17 @@ const orderFor = (overrides = {}) => ({
   ...overrides,
 });
 
-const repositoryFor = (initial) => {
+const repositoryFor = (initial, { throwOnEnqueue = false } = {}) => {
   let stored = structuredClone(initial);
   let updates = 0;
+  let jobs = [];
+  const events = [];
   let queue = Promise.resolve();
   return {
+    events,
+    get jobs() {
+      return structuredClone(jobs);
+    },
     get order() {
       return structuredClone(stored);
     },
@@ -44,16 +50,27 @@ const repositoryFor = (initial) => {
         queue = new Promise((resolve) => { release = resolve; });
         await previous;
         const draft = structuredClone(stored);
+        const draftJobs = structuredClone(jobs);
         try {
           const result = await operation({
+            enqueueShipmentEmail: async (id) => {
+              events.push("enqueue");
+              if (throwOnEnqueue) throw new Error("synthetic enqueue failure");
+              if (!draftJobs.some((job) => job.orderId === id)) {
+                draftJobs.push({ kind: "customer_shipped", orderId: id });
+              }
+            },
             lockOrder: async (id) => id === draft.id ? structuredClone(draft) : null,
             updateOrder: async (id, update) => {
               assert.equal(id, draft.id);
+              events.push("update");
               updates += 1;
               Object.assign(draft, update);
             },
           });
           stored = draft;
+          jobs = draftJobs;
+          events.push("commit");
           return result;
         } finally {
           release();
@@ -65,6 +82,7 @@ const repositoryFor = (initial) => {
 
 const run = (store, input, options = {}) =>
   transitionOrderFulfillment({
+    attemptOrderEmailDelivery: async () => {},
     input,
     now: fixedNow,
     orderId: 17,
@@ -161,6 +179,102 @@ test("tracking may be corrected before shipment and is immutable after shipment"
   assert.equal(delivered.shippedAt, fixedNow.toISOString());
 });
 
+test("first shipment enqueues once transactionally and attempts delivery after commit", async () => {
+  const store = repositoryFor(orderFor({ orderStatus: "ready_to_ship" }));
+  const delivery = [];
+  const input = {
+    expectedCurrentState: "ready_to_ship",
+    requestedNextState: "shipped",
+    tracking: { carrier: "ups", trackingNumber: "1Z999AA10123456784" },
+  };
+  const first = await run(store, input, {
+    attemptOrderEmailDelivery: async (orderId) => {
+      delivery.push(orderId);
+      store.events.push("delivery");
+    },
+  });
+  assert.equal(first.state, "shipped");
+  assert.deepEqual(store.jobs, [{ kind: "customer_shipped", orderId: 17 }]);
+  assert.deepEqual(delivery, [17]);
+  assert.deepEqual(store.events, ["update", "enqueue", "commit", "delivery"]);
+
+  assert.equal((await run(store, input, {
+    attemptOrderEmailDelivery: async () => { throw new Error("must not run"); },
+  })).idempotent, true);
+  assert.equal(store.jobs.length, 1);
+});
+
+test("non-shipping and delivered transitions never enqueue shipment email", async () => {
+  const beforeShip = repositoryFor(orderFor());
+  await run(beforeShip, {
+    expectedCurrentState: "unfulfilled",
+    requestedNextState: "in_progress",
+  });
+  assert.deepEqual(beforeShip.jobs, []);
+
+  const delivered = repositoryFor(orderFor({
+    orderStatus: "shipped",
+    shippedAt: fixedNow.toISOString(),
+  }));
+  await run(delivered, {
+    expectedCurrentState: "shipped",
+    requestedNextState: "delivered",
+  });
+  assert.deepEqual(delivered.jobs, []);
+});
+
+test("enqueue failure rolls back shipment and provider failure preserves committed shipment", async () => {
+  const enqueueFailure = repositoryFor(
+    orderFor({ orderStatus: "ready_to_ship" }),
+    { throwOnEnqueue: true },
+  );
+  await assert.rejects(
+    run(enqueueFailure, {
+      expectedCurrentState: "ready_to_ship",
+      requestedNextState: "shipped",
+    }),
+    /synthetic enqueue failure/,
+  );
+  assert.equal(enqueueFailure.order.orderStatus, "ready_to_ship");
+  assert.deepEqual(enqueueFailure.jobs, []);
+
+  const providerFailure = repositoryFor(orderFor({ orderStatus: "ready_to_ship" }));
+  const result = await run(
+    providerFailure,
+    {
+      expectedCurrentState: "ready_to_ship",
+      requestedNextState: "shipped",
+    },
+    {
+      attemptOrderEmailDelivery: async () => {
+        throw new Error("provider timeout");
+      },
+    },
+  );
+  assert.equal(result.state, "shipped");
+  assert.equal(providerFailure.order.orderStatus, "shipped");
+  assert.deepEqual(providerFailure.jobs, [{ kind: "customer_shipped", orderId: 17 }]);
+});
+
+test("concurrent shipment requests create and attempt one logical email", async () => {
+  const store = repositoryFor(orderFor({ orderStatus: "ready_to_ship" }));
+  let deliveries = 0;
+  const input = {
+    expectedCurrentState: "ready_to_ship",
+    requestedNextState: "shipped",
+  };
+  const options = {
+    attemptOrderEmailDelivery: async () => { deliveries += 1; },
+  };
+  const results = await Promise.all([
+    run(store, input, options),
+    run(store, input, options),
+  ]);
+  assert.equal(results.filter(({ idempotent }) => idempotent).length, 1);
+  assert.equal(store.jobs.length, 1);
+  assert.equal(deliveries, 1);
+});
+
 test("full refunds and unsafe disputes block while partial refunds and won disputes continue", async () => {
   for (const blocked of [
     orderFor({ paymentStatus: "refunded", refundedAmountCents: 900, refundState: "full" }),
@@ -219,6 +333,7 @@ test("the persistence write contains only fulfillment fields", async () => {
   let written;
   const repository = {
     transaction: async (_request, operation) => operation({
+      enqueueShipmentEmail: async () => {},
       lockOrder: async () => structuredClone(original),
       updateOrder: async (_id, update) => { written = update; },
     }),

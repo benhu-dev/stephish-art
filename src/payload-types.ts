@@ -280,7 +280,7 @@ export interface OrderUpload {
 export interface EmailOutbox {
   id: number;
   order: number | Order;
-  kind: 'customer_order_confirmation' | 'artist_new_order';
+  kind: 'customer_order_confirmation' | 'artist_new_order' | 'customer_shipped';
   status: 'pending' | 'processing' | 'sent' | 'failed';
   attempts: number;
   nextAttemptAt?: string | null;

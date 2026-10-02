@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { EmailOutbox } from "../../src/collections/EmailOutbox.ts";
+import { createOrderEmailOutboxJobs } from "../../src/server/email/emailOutbox.ts";
 
 const fieldsByName = Object.fromEntries(
   EmailOutbox.fields.map((field) => [field.name, field]),
@@ -36,6 +37,7 @@ test("Email Outbox has the minimal durable job contract and compound uniqueness"
   assert.deepEqual(optionValues(fieldsByName.kind), [
     "customer_order_confirmation",
     "artist_new_order",
+    "customer_shipped",
   ]);
   assert.equal(fieldsByName.kind.required, true);
   assert.deepEqual(optionValues(fieldsByName.status), [
@@ -87,6 +89,32 @@ test("Email Outbox is administrator-read-only through ordinary access", async ()
     assert.equal(await EmailOutbox.access[operation](anonymous), false);
     assert.equal(await EmailOutbox.access[operation](administrator), false);
   }
+});
+
+test("paid-order fulfillment keeps its original two email kinds", async () => {
+  const created = [];
+  await createOrderEmailOutboxJobs({
+    orderId: 41,
+    request: {
+      payload: {
+        create: async (input) => { created.push(input.data); },
+      },
+    },
+  });
+  assert.deepEqual(created, [
+    {
+      attempts: 0,
+      kind: "customer_order_confirmation",
+      order: 41,
+      status: "pending",
+    },
+    {
+      attempts: 0,
+      kind: "artist_new_order",
+      order: 41,
+      status: "pending",
+    },
+  ]);
 });
 
 test("outbox is registered while GraphQL remains disabled and no email provider is added", async () => {

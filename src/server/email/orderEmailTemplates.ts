@@ -1,4 +1,5 @@
 import type { OrderEmailOutboxKind } from "./emailOutbox";
+import { formatNewYorkBusinessDateTime } from "../../lib/newYorkTime";
 import type {
   OrderEmailData,
   OrderEmailMessage,
@@ -25,6 +26,46 @@ const escapeHtml = (value: string) =>
 
 const safeText = (value: string) =>
   value.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+
+const trackingHosts = {
+  fedex: "www.fedex.com",
+  ups: "www.ups.com",
+  usps: "tools.usps.com",
+} as const;
+
+export const trackingUrlFor = (carrier: unknown, trackingNumber: unknown) => {
+  if (
+    typeof trackingNumber !== "string" ||
+    !/^[A-Z0-9]{6,64}$/.test(trackingNumber) ||
+    !(carrier === "fedex" || carrier === "ups" || carrier === "usps")
+  ) {
+    return null;
+  }
+
+  const url =
+    carrier === "usps"
+      ? new URL("https://tools.usps.com/go/TrackConfirmAction")
+      : carrier === "ups"
+        ? new URL("https://www.ups.com/track")
+        : new URL("https://www.fedex.com/fedextrack/");
+  if (carrier === "usps") url.searchParams.set("tLabels", trackingNumber);
+  if (carrier === "ups") {
+    url.searchParams.set("loc", "en_US");
+    url.searchParams.set("tracknum", trackingNumber);
+  }
+  if (carrier === "fedex") url.searchParams.set("trknbr", trackingNumber);
+
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== trackingHosts[carrier] ||
+    url.port ||
+    url.username ||
+    url.password
+  ) {
+    return null;
+  }
+  return url.toString();
+};
 
 const money = (cents: number) => {
   if (!Number.isSafeInteger(cents) || cents < 0) {
@@ -91,6 +132,47 @@ const textDetails = (order: OrderEmailData, includeEmail: boolean) => {
   return `${rows.join("\n")}\n\nShipping destination:\n${addressLines(order).map(safeText).join("\n")}${note}`;
 };
 
+const carrierLabel = (
+  carrier: NonNullable<OrderEmailData["shipment"]>["carrier"],
+) =>
+  carrier === null
+    ? null
+    : carrier === "other"
+      ? "Other"
+      : carrier.toUpperCase();
+
+const shipmentDetails = (order: OrderEmailData) => {
+  const shipment = order.shipment;
+  if (!shipment) throw new Error("ORDER_EMAIL_DATA_INVALID");
+  const shipped = formatNewYorkBusinessDateTime(new Date(shipment.shippedAt));
+  const carrier = carrierLabel(shipment.carrier);
+  const trackingUrl = trackingUrlFor(
+    shipment.carrier,
+    shipment.trackingNumber,
+  );
+  const rows = [
+    ["Shipped", shipped],
+    ...(carrier ? [["Carrier", carrier]] : []),
+    ...(shipment.trackingNumber
+      ? [["Tracking number", shipment.trackingNumber]]
+      : []),
+  ];
+  const htmlRows = rows
+    .map(
+      ([label, value]) =>
+        `<tr><th align="left" style="padding:6px 14px 6px 0">${escapeHtml(label)}</th><td style="padding:6px 0">${escapeHtml(value)}</td></tr>`,
+    )
+    .join("");
+  const linkHtml = trackingUrl
+    ? `<p style="line-height:1.6"><a href="${escapeHtml(trackingUrl)}">Track your postcard</a></p>`
+    : "";
+  const linkText = trackingUrl ? `\nTracking link: ${trackingUrl}` : "";
+  return {
+    html: `<table role="presentation" cellpadding="0" cellspacing="0">${htmlRows}</table>${linkHtml}`,
+    text: `${rows.map(([label, value]) => `${label}: ${safeText(value)}`).join("\n")}${linkText}`,
+  };
+};
+
 export const emailIdempotencyKey = (
   jobId: number,
   kind: OrderEmailOutboxKind,
@@ -118,6 +200,19 @@ export const buildOrderEmailMessage = (
       replyTo: configuration.replyTo,
       subject: "Your postcard order is confirmed",
       text: `${introduction}\n\n${textDetails(order, false)}\n\nWarmly,\nStephish Art`,
+      to: order.customerEmail,
+    };
+  }
+
+  if (kind === "customer_shipped") {
+    const introduction = `Hi ${name}, your postcard is on its way. We hope it brings a little joy when it arrives.`;
+    const details = shipmentDetails(order);
+    return {
+      from: configuration.from,
+      html: htmlShell("Your postcard is on its way", introduction, details.html),
+      replyTo: configuration.replyTo,
+      subject: "Your postcard is on its way",
+      text: `${introduction}\n\n${details.text}\n\nWarmly,\nStephish Art`,
       to: order.customerEmail,
     };
   }

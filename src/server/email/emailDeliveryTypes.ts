@@ -26,6 +26,11 @@ export type OrderEmailData = {
     state: string | null;
   };
   shippingCents: number;
+  shipment: {
+    carrier: "fedex" | "other" | "ups" | "usps" | null;
+    shippedAt: string;
+    trackingNumber: string | null;
+  } | null;
   subtotalCents: number;
   totalCents: number;
 };
@@ -64,12 +69,14 @@ export type EmailOutboxSummary = {
 
 export type EmailOutboxRepository = {
   claim: (options: {
+    kind?: OrderEmailOutboxKind;
     leaseExpiresBefore: Date;
     limit: number;
     now: Date;
     orderId?: number;
   }) => Promise<ClaimedEmailOutboxJob[]>;
   failExhausted: (options: {
+    kind?: OrderEmailOutboxKind;
     leaseExpiresBefore: Date;
     limit: number;
     orderId?: number;

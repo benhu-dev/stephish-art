@@ -22,6 +22,11 @@ const order = {
   shippingCents: 100,
   subtotalCents: 500,
   totalCents: 600,
+  shipment: {
+    carrier: "usps",
+    shippedAt: "2027-01-15T17:00:00.000Z",
+    trackingNumber: "9400111899223856928499",
+  },
 };
 
 const configuration = {
@@ -135,4 +140,43 @@ test("already-sent jobs remain terminal because only claimed jobs are processed"
   });
   assert.equal(summary.scanned, 0);
   assert.equal(sent, false);
+});
+
+test("shipment worker retries reuse one stable provider idempotency key", async () => {
+  const keys = [];
+  const job = {
+    attempts: 1,
+    id: 77,
+    kind: "customer_shipped",
+    lease: "lease-1",
+    orderId: 9,
+  };
+  const first = makeRepository([]);
+  first.claim = async () => [job];
+  await processEmailOutbox({
+    configuration,
+    gateway: {
+      async send(_message, key) {
+        keys.push(key);
+        throw new EmailProviderError("provider_unavailable", true);
+      },
+    },
+    repository: first,
+  });
+
+  const second = makeRepository([]);
+  second.claim = async () => [{ ...job, attempts: 2, lease: "lease-2" }];
+  await processEmailOutbox({
+    configuration,
+    gateway: {
+      async send(_message, key) {
+        keys.push(key);
+        return { providerMessageId: "accepted-on-retry" };
+      },
+    },
+    repository: second,
+  });
+  assert.equal(keys.length, 2);
+  assert.equal(keys[0], keys[1]);
+  assert.match(keys[0], /customer_shipped\/77$/);
 });

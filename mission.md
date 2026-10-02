@@ -1,104 +1,112 @@
-# Phase 2 — Unit 2.20: Order Fulfillment and Tracking Foundation
+# Phase 2 — Unit 2.20.1: Customer Shipment Email
 
 ## Outcome
 
-Add a secure, administrator-only backend workflow for moving a paid Order through production and shipping states while recording optional carrier tracking information.
+When an administrator successfully moves an Order into `shipped` for the first time, transactionally enqueue exactly one customer shipment email and attempt delivery only after the fulfillment transaction commits.
 
-Do not build a custom Admin Dashboard or send shipment email in this Unit.
+Preserve the existing reliable Email Outbox architecture and retry behavior.
 
 ## Required behavior
 
-1. Inspect the existing Order schema and reuse compatible fields. Do not create duplicate payment, shipping-address, refund, or dispute fields.
+1. Add one Email Outbox kind:
 
-2. Add a fulfillment state independent from payment/refund state:
+   `customer_shipped`
 
-   - `unfulfilled`
-   - `in_progress`
-   - `ready_to_ship`
-   - `shipped`
-   - `delivered`
+2. Enqueue exactly one `customer_shipped` job inside the same locked transaction that performs:
 
-3. New paid Orders begin as `unfulfilled`.
+   `ready_to_ship` → `shipped`
 
-4. Allow only these forward transitions:
+3. If outbox insertion fails, roll back both the fulfillment transition and job creation.
 
-   - `unfulfilled` → `in_progress`
-   - `in_progress` → `ready_to_ship`
-   - `ready_to_ship` → `shipped`
-   - `shipped` → `delivered`
+4. Attempt email processing only after the transaction commits.
 
-5. Same-state retries with identical data must be idempotent. Reverse transitions, skipped states, conflicting retries, and terminal-state changes must be rejected.
+5. A provider timeout or failure after commit must not undo the shipped Order. Leave the job retryable through the existing processor, CLI, and cron.
 
-6. Add only the minimum shipping fields required:
+6. Same-state retries, duplicate requests, concurrent transitions, worker retries, and provider retries must never create or deliver more than one logical shipment email.
 
-   - carrier: `usps`, `ups`, `fedex`, or `other`;
-   - normalized tracking number;
-   - server-authored shipped timestamp;
-   - server-authored delivered timestamp.
+7. Do not backfill historical shipped Orders.
 
-7. Carrier and tracking number are optional, but they must be supplied together. Do not accept or persist client-provided tracking URLs.
+8. Send only to the immutable customer email snapshot associated with the Order. Do not use browser-supplied recipient data.
 
-8. Tracking data may be added or corrected only before the first successful transition to `shipped`. After shipment it becomes immutable.
+9. Subject:
 
-9. Add a controlled administrator endpoint:
+   `Your postcard is on its way`
 
-   `PATCH /api/admin/orders/:orderId/fulfillment`
+10. Provide escaped HTML and plain-text versions containing:
 
-   It must require the existing authenticated Payload administrator session, same-origin requests, JSON content type, no query parameters, and an exact request shape containing expected current state, requested next state, and optional tracking data.
+   - a friendly shipment confirmation;
+   - the carrier when present;
+   - the tracking number when present;
+   - a safe tracking link for supported carriers;
+   - the shipped date formatted using `America/New_York`;
+   - existing reply-to behavior.
 
-10. Use a short PostgreSQL transaction with a row lock. The expected current state must prevent stale or concurrent updates. Return a safe conflict response when another transition wins.
+11. Generate tracking links server-side only:
 
-11. The server—not the browser—sets `shippedAt` and `deliveredAt` in UTC.
+   - use HTTPS;
+   - allow only approved USPS, UPS, and FedEx hosts;
+   - encode the normalized tracking number;
+   - never accept or store a client-provided tracking URL;
+   - `other` carrier receives no clickable tracking URL.
 
-12. Before advancing fulfillment, require an existing paid Order. Block new forward transitions when:
+12. If carrier and tracking are absent, send a valid shipment email without an empty tracking section or broken link.
 
-   - the Order is fully refunded;
-   - an active or lost Stripe dispute makes fulfillment unsafe;
-   - payment/order state is inconsistent.
+13. Tracking information used by the email must match the final values committed with the shipment transition.
 
-   A partial refund or a dispute resolved as won may continue.
+14. Do not include:
 
-13. Never modify payment snapshots, Customer data, address snapshots, amount fields, uploads, Stripe identifiers, refund totals, dispute history, or existing email jobs.
+   - internal Order, Customer, Intent, upload, Stripe, dispute, or outbox IDs;
+   - payment identifiers;
+   - private Storage links or attachments;
+   - artist notes;
+   - webhook data;
+   - secrets or signatures.
 
-14. New fields must remain unavailable to anonymous REST and GraphQL writes. No public storefront endpoint may expose fulfillment or tracking data.
+15. Existing customer-confirmation and artist-new-order email behavior must remain unchanged.
 
-15. Logs and responses must not contain customer PII, shipping addresses, artist notes, upload metadata, payment identifiers, or complete request bodies.
+16. No shipment email is created for `unfulfilled`, `in_progress`, `ready_to_ship`, or `delivered`.
 
 ## Acceptance
 
 Cover at minimum:
 
-- exact transition matrix;
-- same-state idempotency;
-- reverse, skipped, stale, and concurrent transitions;
-- administrator authentication and same-origin enforcement;
-- malformed ID, query, content type, and body rejection;
-- tracking normalization and carrier/tracking pairing;
-- tracking immutability after shipment;
-- server-authored UTC timestamps;
-- full-refund and dispute blocking;
-- partial-refund and won-dispute continuation;
-- immutable financial/customer/upload fields;
-- transaction rollback;
-- anonymous REST and GraphQL denial;
-- no Stripe, Resend, Storage, or email-outbox side effects;
+- exactly one job on the first shipped transition;
+- no job before shipped or on delivered;
+- transaction rollback when enqueueing fails;
+- post-commit delivery attempt;
+- provider failure preserving the shipped Order and retryable job;
+- duplicate, concurrent, same-state, worker, and webhook-style replay behavior;
+- stable and distinct provider idempotency key;
+- tracked USPS, UPS, and FedEx templates;
+- `other` carrier without a link;
+- shipment without tracking;
+- HTML/text escaping;
+- New York shipped-date formatting across DST;
+- immutable recipient selection;
+- no private identifiers, attachments, or Storage links;
+- existing two email kinds unchanged;
+- anonymous access denial;
+- migration and unique-index behavior;
 - isolated database lifecycle with exact baseline restoration;
-- migration, generated Payload types, TypeScript, changed-file ESLint, one production build, and diff check.
+- TypeScript, changed-file ESLint, one production build, and diff check.
 
-Use focused tests only. Do not run Stripe Sandbox, Resend, browser, scene, viewport, Storage lifecycle, cleanup, or full regression suites.
+A single real Resend acceptance email may be sent only to the configured user-owned test inbox if delivery is enabled. Do not resend it. If configuration is unavailable, use the provider mock and report that the real send was skipped.
+
+Use focused tests only. Do not run Stripe, browser, scene, viewport, Storage, cleanup, or full regression suites.
 
 ## Boundaries
 
 Do not add:
 
 - custom Admin UI;
-- customer-facing tracking endpoints;
-- shipment email;
-- carrier APIs or automatic delivery polling;
+- artist shipment email;
+- delivered email;
+- refund email;
+- public tracking endpoint;
+- carrier API calls or delivery polling;
 - label purchasing;
-- shipment cancellation;
-- automatic refunds;
-- dependencies or environment variables;
-- unrelated frontend changes.
+- attachments;
+- new dependencies or environment variables;
+- unrelated storefront changes.
 
 Do not commit or push. Preserve user-owned changes and report the starting and ending HEAD.

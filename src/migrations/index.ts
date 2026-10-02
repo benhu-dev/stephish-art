@@ -12,6 +12,7 @@ import * as migration_20260927_223710_add_email_outbox from './20260927_223710_a
 import * as migration_20261001_080010_add_storefront_rate_limits from './20261001_080010_add_storefront_rate_limits';
 import * as migration_20261001_084550_add_stripe_refund_dispute_reconciliation from './20261001_084550_add_stripe_refund_dispute_reconciliation';
 import * as migration_20261002_105432_add_order_fulfillment from './20261002_105432_add_order_fulfillment';
+import * as migration_20261002_113320_add_customer_shipped_email from './20261002_113320_add_customer_shipped_email';
 
 export const migrations = [
   {
@@ -82,6 +83,11 @@ export const migrations = [
   {
     up: migration_20261002_105432_add_order_fulfillment.up,
     down: migration_20261002_105432_add_order_fulfillment.down,
-    name: '20261002_105432_add_order_fulfillment'
+    name: '20261002_105432_add_order_fulfillment',
+  },
+  {
+    up: migration_20261002_113320_add_customer_shipped_email.up,
+    down: migration_20261002_113320_add_customer_shipped_email.down,
+    name: '20261002_113320_add_customer_shipped_email'
   },
 ];

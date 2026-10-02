@@ -66,6 +66,15 @@ const orderData = (row: Record<string, unknown>): OrderEmailData | null => {
   const line1 = validString(row.line1);
   const city = validString(row.city);
   const country = validString(row.country);
+  const trackingCarrier =
+    typeof row.tracking_carrier === "string" &&
+    ["fedex", "other", "ups", "usps"].includes(row.tracking_carrier)
+      ? row.tracking_carrier as "fedex" | "other" | "ups" | "usps"
+      : null;
+  const trackingNumber = validString(row.tracking_number);
+  const shippedAt = row.shipped_at
+    ? new Date(String(row.shipped_at))
+    : null;
   if (
     subtotalCents === null ||
     shippingCents === null ||
@@ -78,7 +87,9 @@ const orderData = (row: Record<string, unknown>): OrderEmailData | null => {
     !city ||
     !country ||
     row.currency !== "usd" ||
-    subtotalCents + shippingCents !== totalCents
+    subtotalCents + shippingCents !== totalCents ||
+    Boolean(trackingCarrier) !== Boolean(trackingNumber) ||
+    (shippedAt !== null && !Number.isFinite(shippedAt.getTime()))
   ) {
     return null;
   }
@@ -98,6 +109,13 @@ const orderData = (row: Record<string, unknown>): OrderEmailData | null => {
       state: typeof row.state === "string" ? row.state : null,
     },
     shippingCents,
+    shipment: shippedAt
+      ? {
+          carrier: trackingCarrier,
+          shippedAt: shippedAt.toISOString(),
+          trackingNumber,
+        }
+      : null,
     subtotalCents,
     totalCents,
   };
@@ -110,13 +128,14 @@ export const createEmailOutboxRepository = (
 ): EmailOutboxRepository => {
   const pool = poolFor(request);
   return {
-    async claim({ leaseExpiresBefore, limit, now, orderId }) {
+    async claim({ kind, leaseExpiresBefore, limit, now, orderId }) {
       const lease = now.toISOString();
       const result = await pool.query(
         `WITH candidates AS (
           SELECT id FROM public.email_outbox
           WHERE attempts < $4
             AND ($5::integer IS NULL OR order_id = $5)
+            AND ($6::text IS NULL OR kind::text = $6)
             AND (
               (status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= $1))
               OR (status = 'processing' AND locked_at <= $2)
@@ -131,17 +150,25 @@ export const createEmailOutboxRepository = (
         FROM candidates
         WHERE jobs.id = candidates.id
         RETURNING jobs.id, jobs.order_id, jobs.kind, jobs.attempts`,
-        [lease, leaseExpiresBefore.toISOString(), limit, EMAIL_OUTBOX_MAX_ATTEMPTS, orderId ?? null],
+        [
+          lease,
+          leaseExpiresBefore.toISOString(),
+          limit,
+          EMAIL_OUTBOX_MAX_ATTEMPTS,
+          orderId ?? null,
+          kind ?? null,
+        ],
       );
       return result.rows.map((row) => claimedJob(row, lease)).filter((job): job is ClaimedEmailOutboxJob => Boolean(job));
     },
 
-    async failExhausted({ leaseExpiresBefore, limit, orderId }) {
+    async failExhausted({ kind, leaseExpiresBefore, limit, orderId }) {
       const result = await pool.query(
         `WITH candidates AS (
           SELECT id FROM public.email_outbox
           WHERE status = 'processing' AND attempts >= $2 AND locked_at <= $1
             AND ($4::integer IS NULL OR order_id = $4)
+            AND ($5::text IS NULL OR kind::text = $5)
           ORDER BY id
           FOR UPDATE SKIP LOCKED
           LIMIT $3
@@ -152,7 +179,13 @@ export const createEmailOutboxRepository = (
         FROM candidates
         WHERE jobs.id = candidates.id
         RETURNING jobs.id`,
-        [leaseExpiresBefore.toISOString(), EMAIL_OUTBOX_MAX_ATTEMPTS, limit, orderId ?? null],
+        [
+          leaseExpiresBefore.toISOString(),
+          EMAIL_OUTBOX_MAX_ATTEMPTS,
+          limit,
+          orderId ?? null,
+          kind ?? null,
+        ],
       );
       return result.rows.length;
     },
@@ -171,12 +204,14 @@ export const createEmailOutboxRepository = (
           orders.shipping_address_state AS state,
           orders.shipping_address_postal_code AS postal_code,
           orders.shipping_address_country AS country,
+          orders.tracking_carrier, orders.tracking_number, orders.shipped_at,
           count(uploads.id)::integer AS reference_photo_count
         FROM public.orders
         INNER JOIN public.customers ON customers.id = orders.customer_id
         INNER JOIN public.checkout_intents AS intents ON intents.id = orders.checkout_intent_id
         LEFT JOIN public.order_uploads AS uploads ON uploads.order_id = orders.id
-        WHERE orders.id = $1 AND orders.payment_status = 'paid'
+        WHERE orders.id = $1
+          AND orders.payment_status IN ('paid', 'partially_refunded')
         GROUP BY orders.id, customers.id, intents.id`,
         [orderId],
       );

@@ -14,6 +14,7 @@ import { Users } from "./collections/Users";
 import { CheckoutSettings } from "./globals/CheckoutSettings";
 import { storefrontCheckoutIntentEndpoints } from "./server/storefront/checkoutIntentEndpoints";
 import { orderFulfillmentEndpoints } from "./server/orders/orderFulfillmentEndpoint";
+import { adminOrderUploadEndpoints } from "./server/orders/adminOrderUploadEndpoint";
 import {
   getOrderUploadStorageOptions,
   ORDER_UPLOAD_MAX_FILE_SIZE_BYTES,
@@ -53,6 +54,7 @@ export default buildConfig({
   endpoints: [
     ...storefrontCheckoutIntentEndpoints,
     ...orderFulfillmentEndpoints,
+    ...adminOrderUploadEndpoints,
   ],
   globals: [CheckoutSettings],
   db: postgresAdapter({

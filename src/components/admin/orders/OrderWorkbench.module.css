@@ -1,0 +1,152 @@
+.workbench {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.header h2,
+.panel h3,
+.images h3,
+.fulfillment h3 {
+  margin: 0;
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.25rem;
+  text-transform: uppercase;
+}
+
+.state {
+  background: var(--theme-elevation-100);
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem;
+  text-transform: capitalize;
+}
+
+.warning,
+.error {
+  border-left: 4px solid var(--theme-warning-500);
+  margin: 0;
+  padding: 0.75rem 1rem;
+}
+
+.error {
+  border-color: var(--theme-error-500);
+  margin-top: 0.75rem;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.panel,
+.images,
+.fulfillment {
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 1rem;
+}
+
+.definitionList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+}
+
+.definitionList div {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(6rem, 0.4fr) minmax(0, 1fr);
+}
+
+.definitionList dt {
+  color: var(--theme-elevation-600);
+}
+
+.definitionList dd {
+  margin: 0;
+}
+
+.address,
+.note {
+  font-style: normal;
+  margin: 1rem 0 0;
+  white-space: pre-wrap;
+}
+
+.imageList {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.imageCard {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.imageCard img {
+  aspect-ratio: 4 / 3;
+  background: var(--theme-elevation-100);
+  border-radius: 0.25rem;
+  display: block;
+  object-fit: contain;
+  width: 100%;
+}
+
+.tracking {
+  border: 0;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  margin: 1rem 0;
+  padding: 0;
+}
+
+.tracking legend {
+  grid-column: 1 / -1;
+}
+
+.tracking label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.tracking input,
+.tracking select {
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .grid,
+  .imageList,
+  .tracking {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .definitionList div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

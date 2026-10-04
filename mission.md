@@ -1,112 +1,124 @@
-# Phase 2 — Unit 2.20.1: Customer Shipment Email
+# Phase 2 — Unit 2.21: Admin Order Workbench Foundation
 
 ## Outcome
 
-When an administrator successfully moves an Order into `shipped` for the first time, transactionally enqueue exactly one customer shipment email and attempt delivery only after the fulfillment transaction commits.
+Give authenticated administrators a practical Payload Admin order workspace for reviewing paid Orders, securely viewing/downloading customer reference images, and performing the existing controlled fulfillment transitions.
 
-Preserve the existing reliable Email Outbox architecture and retry behavior.
+This is an Orders collection workbench, not a new custom dashboard.
 
 ## Required behavior
 
-1. Add one Email Outbox kind:
+1. Improve the existing Payload Orders collection list for operational use:
 
-   `customer_shipped`
+   - newest Orders first;
+   - useful columns for creation time, customer, total, fulfillment state, refund state, and dispute state;
+   - clear labels and grouping;
+   - no secrets, Stripe identifiers, Storage keys, or internal reconciliation fields in the default list.
 
-2. Enqueue exactly one `customer_shipped` job inside the same locked transaction that performs:
+2. Add an administrator-only order detail workspace showing:
 
-   `ready_to_ship` → `shipped`
+   - customer name and email;
+   - immutable shipping-address snapshot;
+   - subtotal, shipping, and total;
+   - artist note rendered as ordinary text;
+   - fulfillment, refund, and dispute state;
+   - created, shipped, and delivered times formatted with `America/New_York`;
+   - customer reference-image previews and downloads.
 
-3. If outbox insertion fails, roll back both the fulfillment transition and job creation.
+3. Keep financial, payment, Customer, address, refund, dispute, email, and upload ownership fields read-only.
 
-4. Attempt email processing only after the transaction commits.
+4. Fulfillment controls must call only the existing controlled endpoint:
 
-5. A provider timeout or failure after commit must not undo the shipped Order. Leave the job retryable through the existing processor, CLI, and cron.
+   `PATCH /api/admin/orders/:orderId/fulfillment`
 
-6. Same-state retries, duplicate requests, concurrent transitions, worker retries, and provider retries must never create or deliver more than one logical shipment email.
+   Do not duplicate transition rules in a second server mutation path.
 
-7. Do not backfill historical shipped Orders.
+5. Show only the currently valid next action:
 
-8. Send only to the immutable customer email snapshot associated with the Order. Do not use browser-supplied recipient data.
+   - `unfulfilled` → Start Work
+   - `in_progress` → Mark Ready to Ship
+   - `ready_to_ship` → Mark Shipped
+   - `shipped` → Mark Delivered
+   - `delivered` → no action
 
-9. Subject:
+6. Mark Shipped must support the existing optional carrier/tracking pair and require explicit administrator confirmation because it can enqueue the customer shipment email.
 
-   `Your postcard is on its way`
+7. Controls must provide:
 
-10. Provide escaped HTML and plain-text versions containing:
+   - single-flight submission;
+   - disabled pending state;
+   - safe inline errors;
+   - stale/conflict handling;
+   - keyboard operation;
+   - accessible labels and focus behavior;
+   - refresh of the displayed Order after success.
 
-   - a friendly shipment confirmation;
-   - the carrier when present;
-   - the tracking number when present;
-   - a safe tracking link for supported carriers;
-   - the shipped date formatted using `America/New_York`;
-   - existing reply-to behavior.
+8. Add administrator-only private upload routes:
 
-11. Generate tracking links server-side only:
+   - inline preview;
+   - original-byte download.
 
-   - use HTTPS;
-   - allow only approved USPS, UPS, and FedEx hosts;
-   - encode the normalized tracking number;
-   - never accept or store a client-provided tracking URL;
-   - `other` carrier receives no clickable tracking URL.
+9. Upload access must require the existing authenticated Payload administrator session and exact Order/upload ownership. Guessed, missing, deleted, or cross-Order uploads return generic denial without exposing existence or metadata.
 
-12. If carrier and tracking are absent, send a valid shipment email without an empty tracking section or broken link.
+10. Stream private Storage objects without buffering the complete file.
 
-13. Tracking information used by the email must match the final values committed with the shipment transition.
+11. Preview/download responses must:
 
-14. Do not include:
+   - preserve the validated JPEG, PNG, or WebP MIME type;
+   - use safe generated filenames;
+   - use `private, no-store`;
+   - use `nosniff`;
+   - use same-origin resource policy;
+   - never return a signed Storage URL, bucket name, object key, original filename, cookie, token, or credential.
 
-   - internal Order, Customer, Intent, upload, Stripe, dispute, or outbox IDs;
-   - payment identifiers;
-   - private Storage links or attachments;
-   - artist notes;
-   - webhook data;
-   - secrets or signatures.
+12. Administrators may preview and download but may not replace, delete, reorder, or publicly share Order uploads from this workspace.
 
-15. Existing customer-confirmation and artist-new-order email behavior must remain unchanged.
+13. Artist notes must render as plain text. Customer or note content must never be interpreted as HTML.
 
-16. No shipment email is created for `unfulfilled`, `in_progress`, `ready_to_ship`, or `delivered`.
+14. Open/full-refund or dispute restrictions must be visibly explained, while the server remains authoritative.
+
+15. Standard anonymous REST and GraphQL access must remain denied. Existing storefront upload-preview authorization must remain unchanged.
+
+16. Do not send real email during tests. A mocked shipment transition may verify that the existing outbox path is invoked exactly once.
 
 ## Acceptance
 
 Cover at minimum:
 
-- exactly one job on the first shipped transition;
-- no job before shipped or on delivered;
-- transaction rollback when enqueueing fails;
-- post-commit delivery attempt;
-- provider failure preserving the shipped Order and retryable job;
-- duplicate, concurrent, same-state, worker, and webhook-style replay behavior;
-- stable and distinct provider idempotency key;
-- tracked USPS, UPS, and FedEx templates;
-- `other` carrier without a link;
-- shipment without tracking;
-- HTML/text escaping;
-- New York shipped-date formatting across DST;
-- immutable recipient selection;
-- no private identifiers, attachments, or Storage links;
-- existing two email kinds unchanged;
-- anonymous access denial;
-- migration and unique-index behavior;
-- isolated database lifecycle with exact baseline restoration;
+- administrator and anonymous access matrix;
+- cross-Order, guessed, deleted, and missing upload denial;
+- exact preview/download bytes, MIME type, disposition, filename, and privacy headers;
+- bounded Storage streaming;
+- no signed URL or private Storage metadata exposure;
+- safe plain-text rendering of hostile customer/note content;
+- correct New York timestamp display;
+- exact visible fulfillment action per state;
+- tracking input and shipment confirmation;
+- single-flight, retry, stale conflict, and session-expiry behavior;
+- successful transition refresh;
+- full-refund and dispute warning states;
+- exactly one mocked shipment-email job on shipped;
+- no mutation from merely viewing the workbench;
+- responsive desktop and narrow layout without horizontal-page overflow;
+- keyboard and focus behavior;
+- focused private-Storage lifecycle with exact cleanup;
+- Payload import-map generation if required;
 - TypeScript, changed-file ESLint, one production build, and diff check.
 
-A single real Resend acceptance email may be sent only to the configured user-owned test inbox if delivery is enabled. Do not resend it. If configuration is unavailable, use the provider mock and report that the real send was skipped.
-
-Use focused tests only. Do not run Stripe, browser, scene, viewport, Storage, cleanup, or full regression suites.
+Do not run real Stripe, Resend, scene, public storefront, cleanup, or full regression suites.
 
 ## Boundaries
 
 Do not add:
 
-- custom Admin UI;
-- artist shipment email;
-- delivered email;
-- refund email;
-- public tracking endpoint;
-- carrier API calls or delivery polling;
-- label purchasing;
-- attachments;
+- a custom global Admin Dashboard;
+- charts or analytics;
+- search beyond Payload’s existing collection behavior;
+- refund or dispute controls;
+- image editing, deletion, or replacement;
+- public order or tracking pages;
+- carrier API calls;
 - new dependencies or environment variables;
-- unrelated storefront changes.
+- unrelated storefront styling.
 
-Do not commit or push. Preserve user-owned changes and report the starting and ending HEAD.
+Do not create a migration unless a real schema change is necessary. Do not commit or push. Preserve user-owned changes and report the starting and ending HEAD.

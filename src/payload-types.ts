@@ -181,6 +181,9 @@ export interface Order {
   customer: number | Customer;
   checkoutIntent: number | CheckoutIntent;
   contactEmail: string;
+  /**
+   * Immutable paid total in integer cents.
+   */
   amountCents: number;
   /**
    * Immutable customer note snapshot captured at payment fulfillment.

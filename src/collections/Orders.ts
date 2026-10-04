@@ -27,21 +27,44 @@ export const Orders: CollectionConfig = {
     create: denyAccess,
     delete: denyAccess,
     read: isAuthenticated,
-    update: isAuthenticated,
+    update: denyAccess,
   },
   admin: {
     defaultColumns: [
+      "createdAtDisplay",
       "customer",
-      "checkoutIntent",
-      "contactEmail",
-      "orderStatus",
-      "paymentStatus",
       "amountCents",
-      "createdAt",
+      "orderStatus",
+      "refundState",
+      "stripeDisputeStatus",
     ],
+    group: "Orders",
+    useAsTitle: "contactEmail",
   },
+  defaultSort: "-createdAt",
   disableDuplicate: true,
   fields: [
+    {
+      name: "workbench",
+      type: "ui",
+      admin: {
+        components: {
+          Field: "/src/components/admin/orders/OrderWorkbenchField#OrderWorkbench",
+        },
+        disableListColumn: true,
+      },
+    },
+    {
+      name: "createdAtDisplay",
+      label: "Created (New York)",
+      type: "ui",
+      admin: {
+        components: {
+          Cell: "/src/components/admin/orders/OrderListCells#OrderCreatedAtCell",
+        },
+        disableListColumn: false,
+      },
+    },
     {
       name: "customer",
       type: "relationship",
@@ -77,12 +100,20 @@ export const Orders: CollectionConfig = {
     },
     {
       name: "amountCents",
+      label: "Total",
       type: "number",
       access: {
         update: denyAccess,
       },
       min: 1,
       required: true,
+      admin: {
+        components: {
+          Cell: "/src/components/admin/orders/OrderListCells#OrderTotalCell",
+        },
+        description: "Immutable paid total in integer cents.",
+        readOnly: true,
+      },
       validate: (value: unknown) => {
         if (typeof value !== "number" || !Number.isInteger(value)) {
           return "Amount must be an integer number of cents.";
@@ -145,6 +176,7 @@ export const Orders: CollectionConfig = {
     },
     {
       name: "orderStatus",
+      label: "Fulfillment",
       type: "select",
       access: {
         update: denyAccess,
@@ -189,6 +221,7 @@ export const Orders: CollectionConfig = {
     },
     {
       name: "refundState",
+      label: "Refund",
       type: "select",
       access: {
         update: denyAccess,
@@ -212,6 +245,7 @@ export const Orders: CollectionConfig = {
     },
     {
       name: "stripeDisputeStatus",
+      label: "Dispute",
       type: "select",
       access: {
         update: denyAccess,
@@ -224,6 +258,9 @@ export const Orders: CollectionConfig = {
     {
       name: "shippingAddress",
       type: "group",
+      access: {
+        update: denyAccess,
+      },
       fields: [
         {
           name: "recipientName",

@@ -23,6 +23,7 @@ test("Orders has exactly the approved non-auth field contract", () => {
     "artistNote",
     "checkoutIntent",
     "contactEmail",
+    "createdAtDisplay",
     "currency",
     "customer",
     "deliveredAt",
@@ -39,7 +40,14 @@ test("Orders has exactly the approved non-auth field contract", () => {
     "stripePaymentIntentId",
     "trackingCarrier",
     "trackingNumber",
+    "workbench",
   ]);
+
+  assert.equal(fieldsByName.workbench.type, "ui");
+  assert.equal(
+    fieldsByName.workbench.admin.components.Field,
+    "/src/components/admin/orders/OrderWorkbenchField#OrderWorkbench",
+  );
 
   assert.equal(fieldsByName.customer.type, "relationship");
   assert.equal(fieldsByName.customer.relationTo, "customers");
@@ -189,15 +197,20 @@ test("Orders has the exact shipping and fulfillment contract", async () => {
 });
 
 test("Orders exposes the approved Admin columns", () => {
+  assert.equal(Orders.defaultSort, "-createdAt");
+  assert.equal(Orders.admin.group, "Orders");
   assert.deepEqual(Orders.admin.defaultColumns, [
+    "createdAtDisplay",
     "customer",
-    "checkoutIntent",
-    "contactEmail",
-    "orderStatus",
-    "paymentStatus",
     "amountCents",
-    "createdAt",
+    "orderStatus",
+    "refundState",
+    "stripeDisputeStatus",
   ]);
+  assert.equal(
+    fieldsByName.amountCents.admin.components.Cell,
+    "/src/components/admin/orders/OrderListCells#OrderTotalCell",
+  );
 });
 
 test("Orders ordinary access denies create/delete and gates read/update", async () => {
@@ -213,7 +226,7 @@ test("Orders ordinary access denies create/delete and gates read/update", async 
   assert.equal(await Orders.access.read(anonymous), false);
   assert.equal(await Orders.access.update(anonymous), false);
   assert.equal(await Orders.access.read(authenticated), true);
-  assert.equal(await Orders.access.update(authenticated), true);
+  assert.equal(await Orders.access.update(authenticated), false);
 });
 
 test("Orders immutable payment fields deny ordinary authenticated updates", async () => {
@@ -234,17 +247,15 @@ test("Orders immutable payment fields deny ordinary authenticated updates", asyn
     "stripeDisputeId",
     "stripeDisputeStatus",
   ];
-  const mutableFields = [
-    "shippingAddress",
-  ];
-
   for (const name of immutableFields) {
     assert.equal(typeof fieldsByName[name].access.update, "function");
     assert.equal(await fieldsByName[name].access.update(authenticated), false);
   }
-  for (const name of mutableFields) {
-    assert.equal(fieldsByName[name].access?.update, undefined);
-  }
+  assert.equal(typeof fieldsByName.shippingAddress.access.update, "function");
+  assert.equal(
+    await fieldsByName.shippingAddress.access.update(authenticated),
+    false,
+  );
 
   for (const name of [
     "orderStatus",

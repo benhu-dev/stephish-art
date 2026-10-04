@@ -21,6 +21,7 @@ export const OrderWorkbenchDetails = ({
   data,
   error,
   onSubmit,
+  ordersListURL = "/admin/collections/orders",
   pending,
   tracking = { carrier: "", trackingNumber: "" },
   onTrackingChange = () => {},
@@ -29,6 +30,7 @@ export const OrderWorkbenchDetails = ({
   data: OrderWorkbenchData;
   error: string | null;
   onSubmit: (event: MouseEvent<HTMLButtonElement>) => void;
+  ordersListURL?: string;
   pending: boolean;
   tracking?: TrackingDraft;
   onTrackingChange?: (tracking: TrackingDraft) => void;
@@ -46,9 +48,12 @@ export const OrderWorkbenchDetails = ({
           <p className={styles.eyebrow}>Artist order workbench</p>
           <h2 id="order-workbench-title">Order #{data.orderId}</h2>
         </div>
-        <span className={styles.state} data-order-state={data.fulfillment.orderStatus}>
-          {data.fulfillment.orderStatus.replaceAll("_", " ")}
-        </span>
+        <div className={styles.headerActions}>
+          <a href={ordersListURL}>Back to Orders</a>
+          <span className={styles.state} data-order-state={data.fulfillment.orderStatus}>
+            {data.fulfillment.orderStatus.replaceAll("_", " ")}
+          </span>
+        </div>
       </header>
 
       {warning ? (

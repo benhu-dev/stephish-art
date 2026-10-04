@@ -30,9 +30,18 @@ export const Orders: CollectionConfig = {
     update: denyAccess,
   },
   admin: {
+    components: {
+      views: {
+        list: {
+          Component: "/src/components/admin/orders/OrderListView#OrderListView",
+        },
+      },
+    },
     defaultColumns: [
+      "viewOrder",
       "createdAtDisplay",
-      "customer",
+      "recipientNameDisplay",
+      "contactEmail",
       "amountCents",
       "orderStatus",
       "refundState",
@@ -42,6 +51,8 @@ export const Orders: CollectionConfig = {
     useAsTitle: "contactEmail",
   },
   defaultSort: "-createdAt",
+  disableBulkDelete: true,
+  disableBulkEdit: true,
   disableDuplicate: true,
   fields: [
     {
@@ -55,12 +66,34 @@ export const Orders: CollectionConfig = {
       },
     },
     {
+      name: "viewOrder",
+      label: "Order",
+      type: "ui",
+      admin: {
+        components: {
+          Cell: "/src/components/admin/orders/OrderListCells#OrderViewCell",
+        },
+        disableListColumn: false,
+      },
+    },
+    {
       name: "createdAtDisplay",
       label: "Created (New York)",
       type: "ui",
       admin: {
         components: {
           Cell: "/src/components/admin/orders/OrderListCells#OrderCreatedAtCell",
+        },
+        disableListColumn: false,
+      },
+    },
+    {
+      name: "recipientNameDisplay",
+      label: "Recipient Name",
+      type: "ui",
+      admin: {
+        components: {
+          Cell: "/src/components/admin/orders/OrderListCells#OrderRecipientNameCell",
         },
         disableListColumn: false,
       },
@@ -86,6 +119,7 @@ export const Orders: CollectionConfig = {
     },
     {
       name: "contactEmail",
+      label: "Customer Email",
       type: "email",
       access: {
         update: denyAccess,

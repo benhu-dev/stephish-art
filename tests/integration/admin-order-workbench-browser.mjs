@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { getPayload, jwtSign } from "payload";
+import { getPayload } from "payload";
 
 import { issueCheckoutIntentCredential } from "../../src/server/checkout-intents/checkoutIntentCredentials.ts";
 
@@ -34,12 +34,15 @@ let payload;
 let socket;
 let baselineCounts;
 let baselineObjects;
+let adminId;
 let customerId;
 let intentId;
 let orderId;
 let uploadId;
 let failed = false;
 let stage = "PREFLIGHT";
+let structuralDiagnostic;
+let readBrowserStructure;
 
 const counts = async () => (
   await database.query(
@@ -49,7 +52,10 @@ const counts = async () => (
       "(SELECT count(*)::int FROM public.customers) AS customers, " +
       "(SELECT count(*)::int FROM public.orders) AS orders, " +
       "(SELECT count(*)::int FROM public.email_outbox) AS email_outbox, " +
-      "(SELECT count(*)::int FROM public.stripe_events) AS stripe_events"
+      "(SELECT count(*)::int FROM public.stripe_events) AS stripe_events, " +
+      "(SELECT count(*)::int FROM public.users) AS users, " +
+      "(SELECT count(*)::int FROM public.payload_preferences) AS payload_preferences, " +
+      "(SELECT count(*)::int FROM public.payload_preferences_rels) AS payload_preferences_rels"
   )
 ).rows[0];
 
@@ -171,28 +177,38 @@ try {
   assert.deepEqual(await objectKeys(), [...baselineObjects, upload.filename].sort());
 
   stage = "AUTH";
-  const admins = await payload.find({
+  const adminEmail = `admin-${runId}@example.invalid`;
+  const adminPassword = `Unit-2-21-${randomUUID()}-A!`;
+  const admin = await payload.create({
     collection: "users",
-    limit: 2,
+    data: { email: adminEmail, password: adminPassword },
+    depth: 0,
     overrideAccess: true,
-    showHiddenFields: true,
   });
-  assert.equal(admins.docs.length, 1);
-  const admin = admins.docs[0];
-  assert(admin.sessions?.[0]?.id);
-  const { token } = await jwtSign({
-    fieldsToSign: {
-      collection: "users",
-      id: admin.id,
-      sid: admin.sessions[0].id,
-    },
-    secret: payload.secret,
-    tokenExpiration: payload.collections.users.config.auth.tokenExpiration,
+  adminId = Number(admin.id);
+  const { token } = await payload.login({
+    collection: "users",
+    data: { email: adminEmail, password: adminPassword },
+    overrideAccess: true,
   });
+  assert(token);
 
   stage = "BROWSER_CONNECT";
-  const targets = await fetch(`${debugURL}/json`).then((response) => response.json());
-  const target = targets.find((item) => item.type === "page");
+  console.log("BROWSER_FIXTURE_READY=PASS");
+  let targets;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    try {
+      targets = await fetch(`${debugURL}/json`).then((response) => response.json());
+      if (targets.length > 0) break;
+    } catch {
+      await delay(250);
+    }
+  }
+  assert(targets, "Open an isolated Chromium page on the requested debugging port");
+  const target = targets.find(
+    (item) => item.type === "page" && item.url === "about:blank",
+  ) ?? targets.find((item) => item.type === "page") ??
+    targets.find((item) => item.url === "about:blank");
   assert(target, "Open an isolated Chromium page on the requested debugging port");
   socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve) => socket.addEventListener("open", resolve, { once: true }));
@@ -217,6 +233,18 @@ try {
     assert(!result.exceptionDetails);
     return result.result.value;
   };
+  readBrowserStructure = () => evaluate(`(() => ({
+    headingCount: document.querySelectorAll("table thead th").length,
+    loginVisible: Boolean(document.querySelector("form[action*='login'], input[name='email']")),
+    path: location.pathname,
+    rowCount: document.querySelectorAll("table tbody tr").length,
+    title: document.title,
+    workbenchTitle: document.querySelector("#order-workbench-title")?.textContent,
+    workbenchUnavailable: document.body.textContent.includes("workbench is unavailable"),
+    workbenchVisible: Boolean(document.querySelector("#order-workbench-title")),
+    viewOrderCount: Array.from(document.querySelectorAll("a"))
+      .filter((candidate) => candidate.textContent.trim().startsWith("View Order")).length,
+  }))()`);
   const waitFor = async (expression, description, attemptsCount = 200) => {
     for (let attempt = 0; attempt < attemptsCount; attempt += 1) {
       if (interceptionFailure) throw interceptionFailure;
@@ -324,13 +352,75 @@ try {
     source: "window.__confirmCount=0; window.confirm=()=>{window.__confirmCount+=1; return true};",
   });
 
-  stage = "INITIAL_RENDER";
+  stage = "ORDERS_LIST";
   await send("Page.navigate", {
-    url: `${baseURL}/admin/collections/orders/${orderId}`,
+    url: `${baseURL}/admin/collections/orders?page=1`,
   });
   await waitFor(
-    `document.querySelector("#order-workbench-title")?.textContent === "Order #${orderId}"`,
+    `document.querySelectorAll("table tbody tr").length > 0`,
+    "order list row",
+  );
+  const listContract = await evaluate(`(() => {
+    const headings = Array.from(document.querySelectorAll("table thead th"))
+      .map((heading) => heading.textContent.trim())
+      .filter(Boolean);
+    const link = Array.from(document.querySelectorAll("a"))
+      .find((candidate) => candidate.textContent.trim().startsWith("View Order") && candidate.pathname === "/admin/collections/orders/${orderId}");
+    return {
+      artistNoteDefault: headings.some((heading) => /artist note/i.test(heading)),
+      checkboxCount: document.querySelectorAll("table input[type=checkbox]").length,
+      emailVisible: document.body.textContent.includes(${JSON.stringify(`${runId}@example.invalid`)}),
+      headings,
+      recipientVisible: document.body.textContent.includes("A <script>Literal</script>"),
+      selectAllVisible: Array.from(document.querySelectorAll("button, label"))
+        .some((element) => /select all/i.test(element.textContent || element.getAttribute("aria-label") || "")),
+      tagName: link?.tagName,
+      viewOrderCount: Array.from(document.querySelectorAll("a"))
+        .filter((candidate) => candidate.textContent.trim().startsWith("View Order")).length,
+    };
+  })()`);
+  structuralDiagnostic = {
+    checkboxCount: listContract.checkboxCount,
+    headings: listContract.headings,
+    selectAllVisible: listContract.selectAllVisible,
+    viewOrderCount: listContract.viewOrderCount,
+  };
+  for (const heading of [
+    "Order",
+    "Created (New York)",
+    "Recipient Name",
+    "Customer Email",
+    "Total",
+    "Fulfillment",
+    "Refund",
+    "Dispute",
+  ]) {
+    assert(listContract.headings.some((value) => value.includes(heading)), `missing ${heading} column`);
+  }
+  assert.equal(listContract.artistNoteDefault, false);
+  assert.equal(listContract.checkboxCount, 0);
+  assert.equal(listContract.emailVisible, true);
+  assert.equal(listContract.recipientVisible, true);
+  assert.equal(listContract.selectAllVisible, false);
+  assert.equal(listContract.tagName, "A");
+  assert.equal(
+    (await database.query("SELECT order_status FROM public.orders WHERE id = $1", [orderId])).rows[0].order_status,
+    "unfulfilled",
+  );
+  await evaluate(`(() => {
+    const link = Array.from(document.querySelectorAll("a"))
+      .find((candidate) => candidate.textContent.trim().startsWith("View Order") && candidate.pathname === "/admin/collections/orders/${orderId}");
+    link.focus();
+    if (document.activeElement !== link) throw new Error("View Order link did not accept keyboard focus");
+    link.click();
+  })()`);
+
+  stage = "INITIAL_RENDER";
+  structuralDiagnostic = undefined;
+  await waitFor(
+    `document.querySelector("#order-workbench-title")?.textContent.includes("Order #${orderId}")`,
     "order workbench",
+    400,
   );
   assert.equal(
     await evaluate(`document.querySelector("[aria-labelledby=note-heading] p").textContent`),
@@ -355,6 +445,9 @@ try {
     customers: baselineCounts.customers + 1,
     order_uploads: baselineCounts.order_uploads + 1,
     orders: baselineCounts.orders + 1,
+    payload_preferences: baselineCounts.payload_preferences + 1,
+    payload_preferences_rels: baselineCounts.payload_preferences_rels + 1,
+    users: baselineCounts.users + 1,
   });
 
   stage = "PRIVATE_IMAGE";
@@ -515,13 +608,47 @@ try {
   }
   assert.equal(browserErrors.length, 0);
   assert.equal(interceptionFailure, undefined);
+  stage = "RETURN_TO_LIST";
+  structuralDiagnostic = undefined;
+  assert.deepEqual(
+    await evaluate(`(() => {
+      const link = Array.from(document.querySelectorAll("a"))
+        .find((candidate) => candidate.textContent.trim() === "Back to Orders");
+      return { href: link?.pathname, tagName: link?.tagName };
+    })()`),
+    { href: "/admin/collections/orders", tagName: "A" },
+  );
+  await evaluate(`(() => {
+    const link = Array.from(document.querySelectorAll("a"))
+      .find((candidate) => candidate.textContent.trim() === "Back to Orders");
+    link.focus();
+    if (document.activeElement !== link) throw new Error("Back to Orders link did not accept keyboard focus");
+    link.click();
+  })()`);
+  await waitFor(
+    `location.pathname === "/admin/collections/orders" && document.querySelectorAll("table tbody tr").length > 0`,
+    "return to Orders list",
+    400,
+  );
+  assert.equal(
+    await evaluate(`Array.from(document.querySelectorAll("a"))
+      .some((link) => link.textContent.trim().startsWith("View Order") && link.pathname === "/admin/collections/orders/${orderId}")`),
+    true,
+  );
   console.log("ADMIN_ORDER_WORKBENCH_BROWSER_RESULT=PASS");
+  console.log("ORDERS_LIST_NAVIGATION_AND_RETURN=PASS");
   console.log("PRIVATE_STREAM_AND_RESPONSIVE_LAYOUT=PASS");
   console.log("MOCKED_FULFILLMENT_UI_STATES=PASS");
 } catch {
   failed = true;
+  if (!structuralDiagnostic && readBrowserStructure) {
+    structuralDiagnostic = await readBrowserStructure().catch(() => undefined);
+  }
   console.error(`ADMIN_ORDER_WORKBENCH_FAILURE_STAGE=${stage}`);
   console.error("ADMIN_ORDER_WORKBENCH_FAILURE=REDACTED");
+  if (structuralDiagnostic) {
+    console.error(`ADMIN_ORDER_STRUCTURAL_DIAGNOSTIC=${JSON.stringify(structuralDiagnostic)}`);
+  }
   if (orderId && database) {
     const diagnostic = await database
       .query("SELECT order_status FROM public.orders WHERE id = $1", [orderId])
@@ -542,6 +669,14 @@ try {
     }
     if (payload && intentId) {
       await payload.delete({ collection: "checkout-intents", id: intentId, overrideAccess: true });
+    }
+    if (adminId) {
+      await database.query(
+        "DELETE FROM public.payload_preferences WHERE id IN " +
+          "(SELECT parent_id FROM public.payload_preferences_rels WHERE users_id = $1)",
+        [adminId],
+      );
+      await payload.delete({ collection: "users", id: adminId, overrideAccess: true });
     }
     if (baselineCounts && baselineObjects) {
       const finalCounts = await counts();

@@ -1,4 +1,5 @@
 import type { UIFieldServerProps } from "payload";
+import { formatAdminURL } from "payload/shared";
 
 import { readOrderWorkbench } from "../../../server/orders/orderWorkbenchService";
 import { OrderWorkbenchClient } from "./OrderWorkbench";
@@ -17,5 +18,10 @@ export const OrderWorkbench = async ({ id, req }: UIFieldServerProps) => {
       </p>
     );
   }
-  return <OrderWorkbenchClient data={data} />;
+  const ordersListURL = formatAdminURL({
+    adminRoute: req.payload.config.routes.admin,
+    path: "/collections/orders",
+  });
+
+  return <OrderWorkbenchClient data={data} ordersListURL={ordersListURL} />;
 };

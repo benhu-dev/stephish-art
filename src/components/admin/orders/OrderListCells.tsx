@@ -1,4 +1,5 @@
 import type { DefaultServerCellComponentProps } from "payload";
+import { formatAdminURL } from "payload/shared";
 
 import { formatNewYorkBusinessDateTime } from "../../../lib/newYorkTime";
 
@@ -22,4 +23,32 @@ export const OrderCreatedAtCell = ({
   } catch {
     return "—";
   }
+};
+
+export const OrderRecipientNameCell = ({
+  rowData,
+}: DefaultServerCellComponentProps) => {
+  const recipientName = rowData?.shippingAddress?.recipientName;
+  return typeof recipientName === "string" && recipientName.length > 0
+    ? recipientName
+    : "—";
+};
+
+export const OrderViewCell = ({
+  collectionSlug,
+  linkURL,
+  payload,
+  rowData,
+}: DefaultServerCellComponentProps) => {
+  const id = rowData?.id;
+  if ((typeof id !== "number" && typeof id !== "string") || String(id).length === 0) {
+    return "—";
+  }
+
+  const href = linkURL ?? formatAdminURL({
+    adminRoute: payload.config.routes.admin,
+    path: `/collections/${collectionSlug}/${encodeURIComponent(String(id))}`,
+  });
+
+  return <a href={href}>View Order</a>;
 };

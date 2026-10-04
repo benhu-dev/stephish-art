@@ -30,7 +30,13 @@ const safeError = (status: number, code?: string) => {
   return "The order could not be updated. Nothing was changed; please retry.";
 };
 
-export const OrderWorkbenchClient = ({ data }: { data: OrderWorkbenchData }) => {
+export const OrderWorkbenchClient = ({
+  data,
+  ordersListURL,
+}: {
+  data: OrderWorkbenchData;
+  ordersListURL: string;
+}) => {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +125,7 @@ export const OrderWorkbenchClient = ({ data }: { data: OrderWorkbenchData }) => 
       error={error}
       onSubmit={submit}
       onTrackingChange={setTracking}
+      ordersListURL={ordersListURL}
       pending={pending}
       styles={styles}
       tracking={tracking}

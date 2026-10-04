@@ -30,6 +30,7 @@ test("Orders has exactly the approved non-auth field contract", () => {
     "orderStatus",
     "paidAt",
     "paymentStatus",
+    "recipientNameDisplay",
     "refundState",
     "refundedAmountCents",
     "shippedAt",
@@ -40,6 +41,7 @@ test("Orders has exactly the approved non-auth field contract", () => {
     "stripePaymentIntentId",
     "trackingCarrier",
     "trackingNumber",
+    "viewOrder",
     "workbench",
   ]);
 
@@ -198,15 +200,32 @@ test("Orders has the exact shipping and fulfillment contract", async () => {
 
 test("Orders exposes the approved Admin columns", () => {
   assert.equal(Orders.defaultSort, "-createdAt");
+  assert.equal(Orders.disableBulkDelete, true);
+  assert.equal(Orders.disableBulkEdit, true);
   assert.equal(Orders.admin.group, "Orders");
+  assert.equal(
+    Orders.admin.components.views.list.Component,
+    "/src/components/admin/orders/OrderListView#OrderListView",
+  );
   assert.deepEqual(Orders.admin.defaultColumns, [
+    "viewOrder",
     "createdAtDisplay",
-    "customer",
+    "recipientNameDisplay",
+    "contactEmail",
     "amountCents",
     "orderStatus",
     "refundState",
     "stripeDisputeStatus",
   ]);
+  assert.equal(fieldsByName.viewOrder.type, "ui");
+  assert.equal(fieldsByName.viewOrder.label, "Order");
+  assert.equal(
+    fieldsByName.viewOrder.admin.components.Cell,
+    "/src/components/admin/orders/OrderListCells#OrderViewCell",
+  );
+  assert.equal(fieldsByName.recipientNameDisplay.type, "ui");
+  assert.equal(fieldsByName.recipientNameDisplay.label, "Recipient Name");
+  assert.equal(fieldsByName.contactEmail.label, "Customer Email");
   assert.equal(
     fieldsByName.amountCents.admin.components.Cell,
     "/src/components/admin/orders/OrderListCells#OrderTotalCell",

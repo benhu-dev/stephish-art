@@ -174,5 +174,6 @@ test("hostile customer and note content is rendered only as escaped text", () =>
   assert.doesNotMatch(html, /<script|<img src=x|dangerouslySetInnerHTML/i);
   assert.match(html, /aria-label="Preview reference image 1"/);
   assert.match(html, /Download reference image 1/);
+  assert.match(html, /href="\/admin\/collections\/orders">Back to Orders<\/a>/);
   assert.match(html, /<button type="button">Start Work<\/button>/);
 });

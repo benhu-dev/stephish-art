@@ -1,124 +1,70 @@
-# Phase 2 — Unit 2.21: Admin Order Workbench Foundation
+# Phase 2 — Unit 2.21.1: Make the Order Workbench Reachable
 
 ## Outcome
 
-Give authenticated administrators a practical Payload Admin order workspace for reviewing paid Orders, securely viewing/downloading customer reference images, and performing the existing controlled fulfillment transitions.
+Fix the Payload Orders list so administrators can clearly open each Order and reach the existing secure Order Workbench.
 
-This is an Orders collection workbench, not a new custom dashboard.
+This is a focused Admin navigation and list-UX defect fix. Do not redesign the workbench or expand backend functionality.
 
 ## Required behavior
 
-1. Improve the existing Payload Orders collection list for operational use:
+1. On `/admin/collections/orders`, every Order must have an obvious, keyboard-accessible `View Order` link or button.
+2. Activating it must open the correct Order’s existing custom Workbench.
+3. The Workbench must continue showing:
+   - customer and shipping details;
+   - totals, refund, dispute, and fulfillment state;
+   - artist note;
+   - owned reference-image previews;
+   - protected Preview and Download actions;
+   - existing fulfillment controls.
+4. Provide a clear way to return to the Orders list.
+5. Remove or hide the row-selection checkboxes and `Select all` UI when no permitted bulk action exists.
+6. Default list columns must include:
+   - Created (New York);
+   - Recipient Name;
+   - Customer Email;
+   - Total;
+   - Fulfillment;
+   - Refund;
+   - Dispute.
+7. Artist Note must not be a default list column. It may remain available in the Columns picker.
+8. Preserve sorting, filtering, pagination, column selection, responsive behavior, and read-only access rules.
+9. Opening or viewing an Order must perform no database, Storage, Stripe, or email mutation.
+10. Preview and download authorization must remain scoped to the authenticated administrator and exact Order/upload ownership.
 
-   - newest Orders first;
-   - useful columns for creation time, customer, total, fulfillment state, refund state, and dispute state;
-   - clear labels and grouping;
-   - no secrets, Stripe identifiers, Storage keys, or internal reconciliation fields in the default list.
+## Constraints
 
-2. Add an administrator-only order detail workspace showing:
+- Diagnose and document the actual navigation failure before fixing it.
+- Prefer supported Payload extension points.
+- Do not rely on fragile DOM mutation or broad global CSS selectors.
+- Do not expose Storage keys, signed URLs, internal credentials, or private identifiers in rendered content or logs.
+- No schema, migration, dependency, environment, payment, webhook, email, cleanup, or storefront changes.
+- Do not modify user-owned data.
+- Do not commit or push.
 
-   - customer name and email;
-   - immutable shipping-address snapshot;
-   - subtotal, shipping, and total;
-   - artist note rendered as ordinary text;
-   - fulfillment, refund, and dispute state;
-   - created, shipped, and delivered times formatted with `America/New_York`;
-   - customer reference-image previews and downloads.
+## Focused acceptance
 
-3. Keep financial, payment, Customer, address, refund, dispute, email, and upload ownership fields read-only.
+- Administrator can open each tested Order with mouse and keyboard.
+- The opened Workbench always belongs to the selected row.
+- Existing image thumbnails render for an Order with uploads.
+- Preview and Download remain functional and private.
+- Cross-Order and guessed upload access remain denied.
+- No inert selection controls remain.
+- Default columns appear without manually using Columns.
+- Desktop 1280×900 and mobile 390×844 remain usable with no page-level horizontal overflow.
+- No browser console errors.
+- Viewing the list and Workbench causes zero mutations.
 
-4. Fulfillment controls must call only the existing controlled endpoint:
+## Validation
 
-   `PATCH /api/admin/orders/:orderId/fulfillment`
+Run only focused validation:
 
-   Do not duplicate transition rules in a second server mutation path.
+1. Red-first regression for the missing navigation.
+2. Relevant Admin Orders acceptance tests.
+3. One focused production-browser lifecycle covering list → Workbench → preview/download → return.
+4. TypeScript.
+5. ESLint on changed handwritten files.
+6. One production build.
+7. `git diff --check`.
 
-5. Show only the currently valid next action:
-
-   - `unfulfilled` → Start Work
-   - `in_progress` → Mark Ready to Ship
-   - `ready_to_ship` → Mark Shipped
-   - `shipped` → Mark Delivered
-   - `delivered` → no action
-
-6. Mark Shipped must support the existing optional carrier/tracking pair and require explicit administrator confirmation because it can enqueue the customer shipment email.
-
-7. Controls must provide:
-
-   - single-flight submission;
-   - disabled pending state;
-   - safe inline errors;
-   - stale/conflict handling;
-   - keyboard operation;
-   - accessible labels and focus behavior;
-   - refresh of the displayed Order after success.
-
-8. Add administrator-only private upload routes:
-
-   - inline preview;
-   - original-byte download.
-
-9. Upload access must require the existing authenticated Payload administrator session and exact Order/upload ownership. Guessed, missing, deleted, or cross-Order uploads return generic denial without exposing existence or metadata.
-
-10. Stream private Storage objects without buffering the complete file.
-
-11. Preview/download responses must:
-
-   - preserve the validated JPEG, PNG, or WebP MIME type;
-   - use safe generated filenames;
-   - use `private, no-store`;
-   - use `nosniff`;
-   - use same-origin resource policy;
-   - never return a signed Storage URL, bucket name, object key, original filename, cookie, token, or credential.
-
-12. Administrators may preview and download but may not replace, delete, reorder, or publicly share Order uploads from this workspace.
-
-13. Artist notes must render as plain text. Customer or note content must never be interpreted as HTML.
-
-14. Open/full-refund or dispute restrictions must be visibly explained, while the server remains authoritative.
-
-15. Standard anonymous REST and GraphQL access must remain denied. Existing storefront upload-preview authorization must remain unchanged.
-
-16. Do not send real email during tests. A mocked shipment transition may verify that the existing outbox path is invoked exactly once.
-
-## Acceptance
-
-Cover at minimum:
-
-- administrator and anonymous access matrix;
-- cross-Order, guessed, deleted, and missing upload denial;
-- exact preview/download bytes, MIME type, disposition, filename, and privacy headers;
-- bounded Storage streaming;
-- no signed URL or private Storage metadata exposure;
-- safe plain-text rendering of hostile customer/note content;
-- correct New York timestamp display;
-- exact visible fulfillment action per state;
-- tracking input and shipment confirmation;
-- single-flight, retry, stale conflict, and session-expiry behavior;
-- successful transition refresh;
-- full-refund and dispute warning states;
-- exactly one mocked shipment-email job on shipped;
-- no mutation from merely viewing the workbench;
-- responsive desktop and narrow layout without horizontal-page overflow;
-- keyboard and focus behavior;
-- focused private-Storage lifecycle with exact cleanup;
-- Payload import-map generation if required;
-- TypeScript, changed-file ESLint, one production build, and diff check.
-
-Do not run real Stripe, Resend, scene, public storefront, cleanup, or full regression suites.
-
-## Boundaries
-
-Do not add:
-
-- a custom global Admin Dashboard;
-- charts or analytics;
-- search beyond Payload’s existing collection behavior;
-- refund or dispute controls;
-- image editing, deletion, or replacement;
-- public order or tracking pages;
-- carrier API calls;
-- new dependencies or environment variables;
-- unrelated storefront styling.
-
-Do not create a migration unless a real schema change is necessary. Do not commit or push. Preserve user-owned changes and report the starting and ending HEAD.
+Stop all task-created processes and report changed files, acceptance results, and final repository status.

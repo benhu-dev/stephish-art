@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import type { AnimationEvent } from "react";
-import { ArtisticCheckoutModal } from "../../checkout/components/ArtisticCheckoutModal";
 import {
   PRESENTATION_TRANSITION_FALLBACK_MS,
   createNarrativeTransition,
@@ -14,15 +13,14 @@ import {
   NARRATIVE_MOMENTS,
   NARRATIVE_PRESENTATION_OFFSET,
 } from "../lib/scroll-narrative";
-import type { SceneTheme } from "../lib/theme";
 
-type Props = { presentationIndex: number; theme: SceneTheme };
+type Props = {
+  onOpenCheckout: (trigger: HTMLButtonElement) => void;
+  presentationIndex: number;
+};
 
-export function ScrollNarrative({ presentationIndex, theme }: Props) {
-  const [modalOpen, setModalOpen] = useState(false);
+export function ScrollNarrative({ onOpenCheckout, presentationIndex }: Props) {
   const [reducedMotion, setReducedMotion] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const closeModal = useCallback(() => setModalOpen(false), []);
   const [transition, dispatch] = useReducer(
     narrativeTransitionReducer,
     HERO_PRESENTATION_INDEX,
@@ -64,7 +62,7 @@ export function ScrollNarrative({ presentationIndex, theme }: Props) {
   const ctaSettled = transition.displayed === CTA_PRESENTATION_INDEX
     && transition.phase === "settled";
   const announcedCopy = transition.displayed === CTA_PRESENTATION_INDEX
-    ? "Want one of your own? Draw Me One."
+    ? "Want one of your own? Drop Your Coins."
     : transition.displayed >= NARRATIVE_PRESENTATION_OFFSET
       ? NARRATIVE_MOMENTS[transition.displayed - NARRATIVE_PRESENTATION_OFFSET].copy
       : "";
@@ -103,24 +101,17 @@ export function ScrollNarrative({ presentationIndex, theme }: Props) {
           <h2>Want one of your own?</h2>
           <p>Choose your price and turn your favorite photo into a postcard.</p>
           <button
-            onClick={() => setModalOpen(true)}
-            ref={triggerRef}
+            onClick={(event) => onOpenCheckout(event.currentTarget)}
             tabIndex={ctaSettled ? 0 : -1}
             type="button"
           >
-            Draw Me One <span aria-hidden="true">↗</span>
+            Drop Your Coins <span aria-hidden="true">↗</span>
           </button>
         </div>
         <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">
           {announcedCopy}
         </p>
       </section>
-      <ArtisticCheckoutModal
-        onClose={closeModal}
-        open={modalOpen}
-        theme={theme}
-        triggerRef={triggerRef}
-      />
     </>
   );
 }

@@ -1,5 +1,5 @@
-import { PostcardScene } from "@/features/postcard-machine/components/PostcardScene";
+import { PhotoBoothHome } from "@/features/photo-booth/components/PhotoBoothHome";
 
 export default function Home() {
-  return <PostcardScene />;
+  return <PhotoBoothHome />;
 }

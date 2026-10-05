@@ -6,7 +6,7 @@ import { getStage, SCROLL_TIMING as timing } from "../lib/animation-config";
 import { getBufferedPresentationIndex } from "../lib/scroll-narrative";
 
 export function useScrollAnimation() {
-  const containerRef = useRef<HTMLElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState(0);
   const [presentationIndex, setPresentationIndex] = useState(0);
 

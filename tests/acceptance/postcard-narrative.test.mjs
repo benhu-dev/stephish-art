@@ -95,7 +95,7 @@ test("scene renders one mutually exclusive hero, narrative, and CTA presentation
   assert.doesNotMatch(scene, /data-scene-heading/);
   assert.match(narrative, /A tiny souvenir\. A big little city\./);
   assert.match(narrative, /Want one of your own\?/);
-  assert.match(narrative, /Draw Me One/);
+  assert.match(narrative, /Drop Your Coins/);
   assert.match(narrative, /Choose your price and turn your favorite photo into a postcard\./);
   assert.match(narrative, /data-narrative-stage/);
   assert.match(narrative, /data-presentation-index/);

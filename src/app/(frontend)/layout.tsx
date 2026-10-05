@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "../globals.css";
 
 export const metadata: Metadata = {
-  title: "A little piece of New York · Stephish.art",
-  description: "A handmade postcard machine in an illustrated New York park. Scroll to insert a coin and print a keepsake.",
+  title: "Steph's Photobooth · Stephish.art",
+  description: "Meet Stephish and visit her online portrait photobooth, inspired by New York park pop-ups.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

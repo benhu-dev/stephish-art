@@ -1,18 +1,22 @@
 "use client";
 
-import { useSceneTheme } from "../hooks/useSceneTheme";
 import { useScrollAnimation } from "../hooks/useScrollAnimation";
 import { SCROLL_TIMING, STAGE_COPY } from "../lib/animation-config";
+import type { SceneTheme } from "../lib/theme";
 import { MachineIllustration } from "./MachineIllustration";
 import { ParkBackground } from "./ParkBackground";
 import { ScrollNarrative } from "./ScrollNarrative";
 import "../scene.css";
 
-export function PostcardScene() {
-  const theme = useSceneTheme();
+type Props = {
+  onOpenCheckout: (trigger: HTMLButtonElement) => void;
+  theme: SceneTheme;
+};
+
+export function PostcardScene({ onOpenCheckout, theme }: Props) {
   const { containerRef, presentationIndex, stage } = useScrollAnimation();
   return (
-    <main ref={containerRef} className="postcard-scroll" style={{ height: SCROLL_TIMING.scrollHeight }}>
+    <div ref={containerRef} className="postcard-scroll" style={{ height: SCROLL_TIMING.scrollHeight }}>
       <section className="postcard-scene" data-theme={theme} aria-label="An illustrated postcard machine in a New York park">
         <ParkBackground />
         <header className="scene-header flex items-center justify-between">
@@ -20,7 +24,7 @@ export function PostcardScene() {
           <span className="scene-location">Handmade in New York <span aria-hidden="true">↗</span></span>
         </header>
         <div className="machine-stage"><MachineIllustration /></div>
-        <ScrollNarrative presentationIndex={presentationIndex} theme={theme} />
+        <ScrollNarrative onOpenCheckout={onOpenCheckout} presentationIndex={presentationIndex} />
         <aside className="handwritten-note" aria-hidden="true">a little art,<br />just for you.<span>⤵</span></aside>
         <div className="scene-instructions text-center">
           <p>{STAGE_COPY[stage]}</p>
@@ -34,6 +38,6 @@ export function PostcardScene() {
         <p className="sr-only">Scroll down to insert a coin, then print an illustrated New York postcard. Scroll up to reverse. With reduced motion enabled, the scene changes in steps.</p>
         <noscript><p className="no-script">Enable JavaScript to insert a coin and print your postcard.</p></noscript>
       </section>
-    </main>
+    </div>
   );
 }

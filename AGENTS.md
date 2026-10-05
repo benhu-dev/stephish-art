@@ -1,498 +1,296 @@
 # Stephish Art — Repository Instructions
 
-## 1. Product and Current Direction
+## 1. Product Direction
 
-Stephish Art is a guest-checkout website for commissioning custom illustrated postcards.
+Stephish Art currently sells commissioned illustrated postcards through guest checkout. It contains:
 
-The product has three layers:
+1. A public 2.5D storytelling scene and artistic checkout flow.
+2. A secure commerce backend using Payload CMS, PostgreSQL, private object storage, Stripe, and Resend.
+3. An artist-only order workflow based on Payload Admin.
 
-1. A public 2.5D storytelling scene and artistic checkout modal.
-2. A secure commerce backend built with Payload CMS, PostgreSQL, private object storage, Stripe, and Resend.
-3. An artist-only operational interface, initially based on Payload Admin.
+Current delivery order:
 
-The delivery order is intentional:
+1. Finish backend behavior, security, data integrity, and production operations.
+2. Finish the artist's order-management workflow.
+3. Review the artist's broader brand requirements, including portfolio and live-drawing services.
+4. Polish public UI, copy, artwork, accessibility, and performance before release.
 
-1. Finish backend behavior, data integrity, security, and operations.
-2. Build or refine the artist admin workflow.
-3. Perform final public-facing UI polish shortly before release.
+The broader artist-brand website is not yet fully designed. Do not add portfolio, live-drawing inquiry, content-management, or broad navigation features until the artist-provided requirements are reviewed and the user approves a product plan.
 
-Do not begin custom dashboard work or broad visual redesign unless the active `mission.md` explicitly requests it.
+Preserve the approved public direction: illustrated Manhattan park, handcrafted instant-camera/postcard machine, reversible scroll stages, New York-based day/night theme, `?theme=day|night` test overrides, responsive layouts, reduced motion, and a consistent 2.5D hand-drawn editorial style.
 
-The public visual direction remains:
+Do not replace approved artwork, restructure the scene, add WebGL/360-degree interaction, or broadly redesign the visual system without explicit approval.
 
-- A fixed illustrated Manhattan park scene.
-- A handcrafted instant-camera/postcard-machine centerpiece.
-- Scroll-driven coin insertion and postcard printing.
-- Deterministic reversible stages.
-- Day/night presentation based on **New York time**, not the visitor's local time.
-- `?theme=day` and `?theme=night` overrides for deterministic testing.
-- Responsive desktop, portrait-mobile, and landscape-mobile behavior.
-- A complete reduced-motion path.
-- A consistent 2.5D, hand-drawn, editorial-art style across text, buttons, modal, and result pages.
+### Approved brand expansion direction
 
-Do not replace approved artwork, restructure the scene, add WebGL, add 360-degree interaction, or redesign the visual system without an explicit mission.
+The site is expanding from a single commissioned-postcard experience into Stephish's broader artist-brand website. The intended top-level areas are Photo Booth, Live Drawing, Portfolio, and About. Detailed requirements for Live Drawing and Portfolio remain unapproved; do not implement them until their artist-provided requirements and product plan are reviewed.
+
+Photo Booth is the provisional brand homepage and may later move to a dedicated route. Keep Photo Booth presentation, state, and checkout code isolated enough that this routing change does not require rebuilding the feature. About will eventually have a separate detailed page; the Photo Booth homepage may include only a concise artist introduction.
+
+The approved Photo Booth product baseline is:
+
+- Preserve the existing Manhattan park 2.5D scene and integrate it after a video-led introduction, concise artist copy, and an event-photo gallery.
+- Use `Drop Your Coins` as the Photo Booth purchase call to action.
+- Let authenticated artists manage postcard templates, preview media, ordering, and availability through Payload Admin.
+- Price each portrait in server-owned USD cents: $20 for one person or pet, plus $5 for each additional person or pet, with a maximum of three subjects per portrait. People and pets have the same price.
+- Allow one to five portraits per self-service checkout. Larger orders may use a future artist-contact path rather than an unbounded anonymous cart.
+- Give each portrait its own template, one to three named subjects, one to three private reference photos capped by its subject count, and its own artist note. A group photo may represent multiple subjects, but the customer must identify who is who.
+- Charge shipping once per Order. The initial approved flat rates are $10 for tracked United States shipping and $5 for untracked international shipping. The server owns the shipping classification, rate, total, and allowed-country rules.
+- Keep the first implementation Stripe card-only. PayPal, Venmo, Zelle, carrier-calculated shipping, and additional payment providers are deferred architectural decisions.
+- Treat custom portraits as final sale for change-of-mind returns, exchanges, and voluntary cancellations after payment. Clearly disclose the policy before payment while preserving remedies and refund capability for non-fulfillment, missed shipment commitments, damage, incorrect or materially misdescribed work, duplicate or incorrect charges, disputes, and applicable legal requirements.
+
+The artist has indicated an expected ten-business-day production window before mailing, but the exact promise is not yet approved. Do not hard-code it into customer promises, deadlines, or automated actions until confirmed.
 
 ---
 
-## 2. Current Architecture
+## 2. Collaboration and Authorization
 
-Use the existing repository and installed versions as the source of truth.
+The user prefers substantial discussion and explicit agreement before implementation.
+
+### Communication language
+
+- Communicate with the user in Traditional Chinese.
+- Use Traditional Chinese for discussion, progress updates, questions, blockers, manual acceptance instructions, and completion reports.
+- Keep source code, identifiers, filenames, commands, API contracts, database fields, test names, and repository documentation in English unless the existing project uses another convention.
+- Preserve logs and error messages in their original language, then explain them in Traditional Chinese.
+- Understand Chinese approval phrases such as “開始”, “開始吧”, “好，開始工作”, and “開始執行” as implementation authorization for the most recently agreed scope.
+
+### Discussion is read-only
+
+Questions, explanations, diagnosis, code review, planning, recommendations, UI/UX discussion, requests for the next Unit, and mission/kickoff drafting are read-only unless the user explicitly says otherwise.
+
+Read-only repository inspection is allowed when useful. During discussion, do not:
+
+- Edit, create, rename, or delete project files.
+- Run migrations or mutate database, Storage, Stripe, Resend, or deployment state.
+- Begin implementation merely because a possible solution was discussed.
+- Run broad or expensive validation suites unless asked.
+
+### What authorizes implementation
+
+Begin only after unambiguous approval such as “開始”, “開始吧”, “好，開始工作”, “開始執行”, “Implement this Unit”, or equivalent language. Approval covers only the most recently agreed scope. A general acknowledgment such as “了解” is not implementation approval.
+
+If the user supplies an explicit implementation kickoff, start without requesting redundant confirmation. Stop and ask only when a missing decision materially changes architecture, cost, schema, retention, access, payment behavior, privacy, or public UX.
+
+### The user controls Git
+
+Unless explicitly requested, never stage, commit, amend, push, modify remotes, create/switch/delete branches or worktrees, rebase, merge, tag, or reset. Leave completed changes unstaged and let the user review and commit them.
+
+---
+
+## 3. Sources of Truth and Session Startup
+
+Use these sources in order:
+
+1. Current user instructions and explicit decisions in the active chat.
+2. Active `mission.md`, when present.
+3. `PROJECT_STATUS.md`, when present, for durable progress and known follow-up work.
+4. This file for durable working rules.
+5. Current code, tests, migrations, installed versions, and Git history.
+
+Do not assume a new chat contains older chat transcripts. Do not rely on chat memory when the repository can establish critical state.
+
+At the start of implementation:
+
+1. Read this file once, then `PROJECT_STATUS.md` and the complete `mission.md` once when present.
+2. Run `git status --short` and `git rev-parse HEAD` once.
+3. Inspect only relevant modules, callers, tests, configuration, and migration state.
+4. State the narrow scope before editing.
+
+Do not repeatedly reread the repository, repeat unchanged preflight checks, or reconstruct project history from scratch. A modified `mission.md` or intentionally updated `AGENTS.md` is expected. Stop only if an unexpected user change overlaps required files or creates material risk.
+
+---
+
+## 4. Architecture and Accepted Baseline
+
+Use the repository and installed versions as the source of truth.
 
 Approved architecture:
 
 - Next.js, React, and TypeScript.
-- Payload CMS inside the existing Next.js application.
+- Payload CMS in the existing Next.js application.
 - PostgreSQL hosted by Supabase.
-- Supabase Storage through the S3-compatible adapter for private `order-uploads` objects.
+- Supabase Storage through its S3-compatible adapter; private `order-uploads` bucket.
 - Stripe Hosted Checkout for one-time USD payments.
 - Verified Stripe webhooks as the only payment authority.
-- Resend for transactional email delivery.
-- Vercel as the intended application host.
-- Focused acceptance and integration tests plus deliberate live Sandbox checks.
+- Resend transactional email.
+- Vercel as the intended host.
 
-The browser must use controlled same-origin endpoints. It must never receive database credentials, object-storage credentials, Stripe secrets, Resend secrets, privileged Payload access, or direct authority over payment/order state.
+The browser uses controlled same-origin endpoints and never receives database/Storage/provider credentials, privileged Payload access, or authority over payment/order state. Do not introduce Supabase Auth, direct browser database access, another backend/payment provider, or public Storage without an explicit architectural decision.
 
-Do not introduce Supabase Auth, direct browser database access, a second application backend, a second payment provider, or a public Storage bucket without an explicit architectural decision.
+The following behavior is implemented and must be preserved unless an approved task changes it:
 
----
+- Guest checkout uses server-authoritative Checkout Intents and an HttpOnly cookie.
+- Amounts use integer cents and server-owned limits.
+- One to three private JPEG/PNG/WebP references and an artist note are supported.
+- Refresh/resume restores confirmed uploads and protected previews.
+- Application removal deletes the upload row and private object; abandonment never deletes paid work.
+- Stripe Sessions are server-created, USD/card-only, US-shipping, idempotent, and hide Link.
+- Verified paid webhooks transactionally create exactly one Order, associate uploads, complete the Intent, and record the event.
+- Repeat purchases by normalized email are allowed.
+- Success polling is bounded and read-only; cancellation supports resume, return home, and start-over.
+- Refunds/disputes reconcile with replay, concurrency, and rollback safety.
+- Bounded cleanup removes eligible abandoned/expired unpaid data while protecting paid, active, uncertain, and Order-owned records.
+- PostgreSQL-backed rate limits protect storefront boundaries across serverless instances.
+- Email Outbox supports customer confirmation, artist notification, and customer shipment messages with idempotent delivery and retries.
+- Orders have constrained fulfillment/tracking transitions.
+- Payload Admin provides an Orders workbench and authenticated private image preview/download.
+- Database timestamps remain UTC; business display and public day/night behavior use `America/New_York` with DST support.
+- Checkout-result UI includes bounded polling, NYC postmark processing treatment, and reduced motion.
 
-## 3. Accepted Baseline
-
-The following capabilities are already implemented and must be preserved unless the active mission changes them.
-
-### 3.1 Payload and data
-
-- Payload Admin authentication exists.
-- PostgreSQL migrations are tracked and applied intentionally.
-- Public application tables use reviewed access controls and RLS posture.
-- Core collections include Checkout Settings, Checkout Intents, Order Uploads, Customers, Orders, Stripe Events, and Email Outbox.
-- Public generic REST/GraphQL writes to protected records are denied.
-- Customer accounts do not exist; checkout is guest-only.
-
-### 3.2 Checkout Intent boundary
-
-- The browser is authorized only by the versioned HttpOnly Checkout Intent cookie.
-- Checkout Intents are temporary server-authoritative drafts, not Orders.
-- Amounts use integer cents with a configurable minimum, initially USD $5.00.
-- One to three JPEG, PNG, or WebP reference photos are supported.
-- Current limits are 15 MiB per file and 30 MiB total.
-- Artist notes are normalized, bounded, persisted, and snapshotted into paid Orders.
-- Refresh/resume restores the draft, confirmed uploads, and protected previews.
-- Explicit abandonment expires the draft and clears the cookie without deleting paid work.
-
-### 3.3 Private uploads
-
-- Uploads are stored in the private `order-uploads` bucket.
-- Browser previews use a cookie-authorized same-origin streaming endpoint.
-- Public bucket URLs and unsigned object access are forbidden.
-- Confirmed uploads are associated with an Intent position and later with exactly one paid Order.
-- Removing an upload through the application removes both its database row and Storage object.
-
-### 3.4 Stripe
-
-- Checkout Sessions are created only by the server.
-- Stripe calls occur outside database transactions and use persisted idempotency.
-- Checkout is USD, card-only, US shipping, with Link explicitly hidden.
-- Browser-provided Stripe parameters are rejected.
-- Success and cancellation URLs contain no internal identifiers.
-- The webhook verifies the raw body and Stripe signature.
-- Paid fulfillment is transactional, idempotent, replay-safe, and concurrency-safe.
-- A paid Session creates or reuses one Customer, creates exactly one Order, associates uploads, completes the Intent, and records the Stripe Event.
-- Repeat purchases by the same normalized email are allowed.
-- The success page only reads webhook-written state; it never creates or marks an Order paid.
-
-### 3.5 Recovery and cleanup
-
-- Recovery probes treat missing or stale browser state as a normal empty result.
-- Cancellation supports resume, non-destructive return home, and confirmed start-over.
-- Expired or abandoned unpaid Intents, upload rows, and Storage objects are removed by a bounded cleanup engine.
-- Paid, completed, Order-owned, active, uncertain, or provider-failing records are protected from cleanup.
-- Cleanup has a dry-run CLI and a protected Vercel Cron route.
-
-### 3.6 Email
-
-- Paid fulfillment creates exactly two Email Outbox jobs: customer confirmation and artist notification.
-- Resend delivery uses stable, distinct idempotency keys.
-- Jobs use atomic claims, stale-lease recovery, bounded retries, and terminal failure handling.
-- Immediate delivery happens after the payment transaction commits.
-- Provider failure never rolls back a paid Order.
-- A CLI and protected daily Vercel Cron route provide fallback delivery.
-- Transactional emails contain no private photo URLs or attachments.
-
-### 3.7 Result UX
-
-- Checkout success polling is bounded, non-overlapping, abortable, and read-only.
-- Processing presentation uses the NYC postmark animation and animated ellipsis.
-- Confirmation interrupts processing immediately and shows the confirmed treatment.
-- Reduced-motion behavior is static and accessible.
-
-Do not reimplement these systems from scratch. Inspect and extend the existing modules.
+Do not reimplement these systems. Extend existing modules. Anything not explicitly listed must not be assumed complete; inspect current code before planning production security, upload-content hardening, monitoring/backups, deployment, or broader artist-site work.
 
 ---
 
-## 4. Current Roadmap
-
-The active mission selects exactly one Unit. The default order is:
-
-### Phase 2 — Backend Completion and Hardening
-
-1. **Unit 2.17.1 — New York Time Policy**
-   - Keep database timestamps in UTC.
-   - Display business-facing times in `America/New_York`.
-   - Drive public day/night behavior from New York time.
-   - Preserve theme query overrides and cover DST boundaries.
-
-2. **Unit 2.18 — Anonymous Storefront Abuse Protection**
-   - Distributed rate limits and bounded request costs.
-   - Protect Intent creation, upload, note, Session creation, recovery, and abandonment as appropriate.
-   - Do not rely only on in-memory counters in serverless production.
-
-3. **Unit 2.19 — Upload Content Hardening**
-   - Verify actual raster content, dimensions, decoding safety, and metadata policy.
-   - Reject disguised, malformed, decompression-bomb, executable, and unsupported content.
-
-4. **Unit 2.20 — Fulfillment and Tracking Backend**
-   - Define the Order state machine.
-   - Add constrained shipping/tracking data and committed status history.
-   - Queue shipment notification exactly once.
-
-5. **Unit 2.21 — Refund and Dispute Reconciliation**
-   - Synchronize Stripe refunds and disputes into local Order/payment state.
-   - Support full and partial refunds without duplicate effects.
-   - Prevent refunded work from proceeding incorrectly.
-
-6. **Unit 2.22 — Production Security and Operations**
-   - Security headers, CSP, trusted origins, secure cookies, configuration validation, health checks, monitoring, backup/restore, deployment and migration procedures.
-
-### Phase 3 — Artist Operations
-
-- Make the standard Payload Order detail workflow safe and usable.
-- Provide authenticated private photo preview/download.
-- Add valid status actions, shipment/tracking entry, safe retry controls, and audit visibility.
-- Add deep links from artist email only after the authenticated Order workflow exists.
-- Build a custom dashboard only if the standard Payload interface is insufficient.
-
-### Phase 4 — Public UI Polish and Release
-
-- Refine copy, spacing, artwork, modal flow, animation timing, responsive behavior, accessibility, and performance.
-- Complete staging and production end-to-end acceptance.
-- Production launch requires explicit user approval.
-
-Do not implement later roadmap items inside an earlier Unit.
-
----
-
-## 5. Non-Negotiable Domain Invariants
+## 5. Domain Invariants
 
 - Currency is USD until explicitly changed.
-- Financial values are integer minor units, never floating-point dollars.
-- The server owns minimum amount, shipping fee, totals, upload limits, and Stripe parameters.
-- At least one server-confirmed reference photo is required before Checkout.
-- A Checkout Intent is not an Order.
-- A browser redirect is not proof of payment.
-- A formal Order is created only after a verified Stripe webhook confirms payment.
-- One successful Stripe payment creates at most one Order.
-- Replayed or concurrent events must not duplicate Orders, uploads, Customers, or email jobs.
-- Stripe and email-provider calls never occur inside database transactions.
-- Reference photos, notes, addresses, email addresses, and tracking data are sensitive.
+- Financial values use integer minor units, never floating-point dollars.
+- The server owns minimums, fees, totals, upload limits, and Stripe parameters.
+- At least one server-confirmed image is required before Checkout.
+- A Checkout Intent is not an Order; a redirect/success page is not proof of payment.
+- Only a verified Stripe webhook can establish paid Order state.
+- One successful payment creates at most one Order.
+- Replay/concurrency must not duplicate Orders, uploads, Customers, ledgers, or email jobs.
+- External provider calls do not belong inside database transactions.
+- Photos, notes, names, addresses, email, tracking data, and provider identifiers are sensitive.
 - Payment-card data never enters or is stored by this application.
-- Email failure never invalidates or rolls back a paid Order.
-- Completed Order uploads must not be removed by abandoned-draft cleanup.
-- Immutable payment facts cannot be casually edited through Payload Admin.
-- Database timestamps remain UTC; business presentation uses `America/New_York`.
+- Email failure never invalidates a paid Order.
+- Paid Order uploads cannot be removed by abandoned-draft cleanup.
+- Immutable payment facts cannot be casually edited through Admin.
+- Persist timestamps in UTC; present business time in `America/New_York`.
 
-Stop and ask before implementing a request that conflicts with an invariant.
+Stop and ask before violating an invariant.
 
 ---
 
-## 6. Unit Work Protocol
+## 6. Work Protocol
 
-### 6.1 Start once, narrowly
+### One focused outcome
 
-Before editing:
+- Implement only the approved outcome and minimum supporting changes.
+- Do not begin later Units opportunistically.
+- Do not use subagents/parallel implementation unless the user explicitly requests it.
+- Follow existing project patterns before adding dependencies or abstractions.
+- Do not perform broad refactors during a defect fix.
+- If work spans independent domains or likely needs a long exploratory run, recommend splitting it before implementation.
 
-1. Read this file and the complete active `mission.md`.
-2. Run `git status --short` and record `git rev-parse HEAD` once.
-3. Treat a modified `mission.md` and an intentionally updated `AGENTS.md` as expected.
-4. Stop only when an unexpected user change overlaps files required by the Unit or creates a material safety risk.
-5. Inspect the directly relevant modules, their imports/callers, applicable tests, `package.json`, and migration state when relevant.
-6. State the narrow implementation scope.
+### Preserve the repository
 
-Do not repeatedly reread the whole repository, rescan unchanged files, or rerun the same preflight checks without a concrete reason.
+Do not reinitialize/scaffold over the app, reorganize broad directories, upgrade unrelated dependencies, remove tests, weaken assertions, or revert/overwrite user-owned changes. Do not modify `.env.local`, `mission.md`, or `AGENTS.md` unless explicitly requested.
 
-### 6.2 One Unit only
+Stop task-created servers, listeners, browsers, watchers, and temporary profiles before reporting. Preserve pre-existing user-owned processes unless authorized to stop them.
 
-- Implement only the active Unit and its minimum supporting changes.
-- Do not opportunistically begin later Units.
-- Do not use subagents or parallel implementation unless the mission explicitly permits it.
-- Ask before schema redesign, new external services, recurring cost, destructive migration, broad dependency change, privacy-policy change, or user-visible workflow change not already decided.
+### Handle blockers efficiently
 
-### 6.3 Preserve the repository
-
-Do not:
-
-- Reinitialize or replace the application.
-- Run project scaffolding over the repository.
-- Rewrite working domains to match a preferred architecture.
-- Reorganize broad directory trees.
-- Upgrade frameworks or unrelated dependencies.
-- Remove tests or weaken assertions.
-- Use destructive Git commands.
-- Revert, overwrite, stage, commit, push, or modify remotes unless explicitly requested.
-- Modify `.env.local`, `mission.md`, or `AGENTS.md` unless the active mission explicitly authorizes it.
-
-Stop task-created servers, listeners, browsers, watchers, and temporary profiles before reporting completion. Preserve a pre-existing user-owned Stripe listener when the mission says it should remain.
-
-### 6.4 Make consequential decisions explicit
-
-Ask the user only when a missing decision materially changes architecture, cost, schema, access, retention, payment behavior, or public UX. Resolve ordinary implementation details using the simplest existing project pattern.
+- Diagnose only failures relevant to the approved task.
+- Do not indefinitely repair unrelated environment problems.
+- After two focused failed approaches, or when additional authority is required, report the blocker and ask for direction.
+- A test harness failure before exercising behavior is not a valid red test or acceptance result.
 
 ---
 
 ## 7. Scope-Proportional Validation
 
-The active mission defines required acceptance evidence. Validation must be sufficient but not ritualistically broad.
+Validation must be sufficient, not ritualistically broad:
 
-### 7.1 Default sequence
-
-1. Write or update focused acceptance coverage before implementation when it provides a meaningful red state.
-2. Confirm the intended focused failure once.
-3. Implement the smallest coherent solution.
-4. Run the focused tests.
+1. Add/update focused coverage when it provides meaningful evidence.
+2. Confirm the intended focused failure once when red-first testing is useful.
+3. Implement the smallest coherent change.
+4. Run focused tests.
 5. Run TypeScript when TypeScript changed.
-6. Run ESLint on changed handwritten files unless the mission requires full lint.
-7. Run integration/lifecycle checks only for boundaries that changed.
-8. Run one production build only when runtime code, routing, configuration, schema, or bundling changed.
-9. Run browser/viewport/scene checks only when affected UI or animation changed.
-10. Run live Stripe, Storage, Resend, database, or deployment checks only when the mission requires and authorizes them.
+6. Run ESLint on changed handwritten files unless broader lint is required.
+7. Run integration/lifecycle checks only for changed trust boundaries.
+8. Run one production build after the final runtime/config/schema state when relevant.
+9. Run browser/viewport checks only for affected UI/animation.
+10. Run live Stripe, Storage, Resend, database, or deployment checks only when explicitly authorized and useful.
 
-Do not run every historical suite for every Unit. Do not rerun a successful expensive command unless the working state changed in a way that could invalidate it.
+Do not run every historical suite for every task or rerun a successful expensive command unless later changes invalidate it. Do not perform visual checks for backend-only changes.
 
-### 7.2 Always truthful
-
-Report every required criterion as `PASS`, `FAIL`, `BLOCKED`, or `NOT RUN`.
-
-Do not:
-
-- Claim commands were run when they were not.
-- Treat a broken test harness as a valid red test.
-- Weaken requirements to obtain green tests.
-- Mark a Unit complete with required `FAIL`, `BLOCKED`, or `NOT RUN` items.
-
-Generated migration warnings may be reported without failing the Unit when there are no errors and the warnings are understood.
-
-### 7.3 Test boundaries
-
-Prefer observable behavior through public/service boundaries over private-helper tests. Important cases include authorization, exact request contracts, replay, concurrency, rollback, provider failure, privacy, and cleanup.
-
-Synthetic fixtures must be uniquely identifiable and cleaned up without changing pre-existing user data. Record starting and final counts when a live database or Storage lifecycle is used.
+Report required criteria truthfully as `PASS`, `FAIL`, `BLOCKED`, or `NOT RUN`. Never claim an unexecuted command or lifecycle. Use uniquely identifiable synthetic fixtures and clean them without changing pre-existing data; record baseline/final counts for live database or Storage lifecycles.
 
 ---
 
 ## 8. Security and Privacy
 
-### 8.1 Secrets
+Never expose, print, commit, render, or log `DATABASE_URL`, `PAYLOAD_SECRET`, Storage credentials, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `CRON_SECRET`, cookies, tokens, or credential hashes. Real values belong only in approved environment configuration; `.env.example` contains placeholders.
 
-Never expose or print:
+Treat all customer and provider data as sensitive:
 
-- `DATABASE_URL`
-- `PAYLOAD_SECRET`
-- Supabase Storage credentials
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `RESEND_API_KEY`
-- `CRON_SECRET`
-- Cookie tokens or credential hashes
+- Return minimal contracts and generic public errors.
+- Never log request/webhook bodies, signatures, addresses, notes, recipients, email bodies, uploaded bytes, object keys, or signed URLs.
+- Do not put PII/internal identifiers in storefront URLs or query strings.
+- Enforce same-origin rules where required.
+- Reject unexpected fields, query authority, malformed/oversized bodies, and conflicting headers.
+- Use `Cache-Control: no-store` for private/stateful responses.
+- Do not expose generic Payload CRUD authority publicly.
 
-Real values belong only in approved environment configuration. `.env.example` contains placeholders only. No secret may enter browser bundles, URLs, logs, snapshots, screenshots, completion reports, Stripe metadata, or email content.
+Uploads must stay private and use randomized keys, safe disposition, bounded counts/bytes, and actual raster validation implemented by the repository. Never trust filenames, extensions, client MIME, or dimensions. Preserve paid uploads. Prefer recoverable deletion order: object first, then database association/row.
 
-### 8.2 PII
+Stripe must remain in Sandbox outside approved production. Verify signatures from the raw bounded body and validate authoritative mode, status, payment status, currency, totals, shipping, and correlation. Never trust browser payment configuration or success URLs.
 
-Treat names, email, shipping address, notes, photos, tracking data, Stripe/customer identifiers, and provider IDs as sensitive.
-
-- Return minimal response contracts.
-- Never log request bodies, webhook bodies/signatures, addresses, notes, email bodies, recipients, uploaded bytes, Storage keys, or signed URLs.
-- Use generic public errors and bounded safe internal classifications.
-- Do not put PII or internal identifiers in storefront URLs or query strings.
-
-### 8.3 Public endpoint rules
-
-- Authenticate Checkout state only through the existing HttpOnly cookie contract.
-- Enforce same-origin behavior where required.
-- Reject unexpected JSON fields, query authority, conflicting headers, malformed bodies, and oversized requests.
-- Set `Cache-Control: no-store` on private or stateful storefront responses.
-- Do not expose generic Payload CRUD authority to public visitors.
-- Rate limiting must work across serverless instances; process memory alone is insufficient.
-
-### 8.4 Upload rules
-
-- Private bucket only.
-- Raster JPEG/PNG/WebP only.
-- Enforce file count, per-file bytes, total bytes, and actual-content validation.
-- Use randomized object keys and safe content disposition.
-- Do not trust filenames, extensions, client MIME, or dimensions.
-- Prevent directory listing and unsigned public access.
-- Keep deletion order recoverable: Storage first, then database association/row.
-- Preserve paid Order uploads.
-
-### 8.5 Stripe rules
-
-- Use Test/Sandbox mode outside approved production.
-- Verify webhook signatures from the raw bounded body.
-- Retrieve authoritative Stripe state before paid fulfillment when required.
-- Validate mode, status, payment status, currency, totals, shipping, metadata correlation, and environment.
-- Persist and enforce idempotency/uniqueness.
-- Never trust success URLs, browser parameters, or customer-provided Stripe configuration.
-
-### 8.6 Email rules
-
-- Outbox creation belongs to the committed business transaction.
-- Provider delivery happens after commit.
-- Stable job-level idempotency and database claims prevent duplicate intentional sends.
-- No photo attachments or private Storage URLs in normal transactional email.
-- Provider failure remains retryable and cannot alter payment truth.
-- Customer replies use the configured Reply-To address.
+Create email jobs inside committed business transactions, but deliver only after commit. Preserve stable job idempotency/claims. Do not include private photo attachments or Storage URLs in normal transactional email. Use configured Reply-To.
 
 ---
 
-## 9. Payload, Database, and Migration Rules
+## 9. Payload, Database, and Code Organization
 
-- Every Collection and Global requires explicit access review.
-- Admin field visibility is not authorization; enforce rules server-side.
-- Payload Local API overrides access by default. Use privileged access only inside small documented server-only modules.
+- Review access for every Collection/Global; Admin visibility is not authorization.
+- Payload Local API overrides access by default. Keep privileged calls in small server-only modules.
 - When acting for a user, pass request/user context and use `overrideAccess: false` where appropriate.
 - Keep hooks thin, idempotent, recursion-safe, and free of slow provider calls.
-- Keep domain workflows in focused service modules.
-- Do not manually edit generated Payload types, import maps, or generated migration snapshots.
-- Generate with supported commands and review the result.
-- Never rewrite an applied migration; add a forward migration.
-- Ask before destructive migrations or backfills.
-- New application tables in Supabase's exposed `public` schema require RLS enabled in the same reviewed migration before storing data.
-- Do not add `anon` or `authenticated` RLS policies without explicit mission authorization.
-- Keep PostgreSQL timestamps as `timestamptz`/UTC. Convert only at display or business-scheduling boundaries.
+- Components own presentation; clients own browser contracts; routes validate HTTP; services own workflows; repositories own locking/persistence; adapters isolate providers.
+- Keep payment, Storage, email, and database logic out of React components.
+- Reuse generated types/shared constants.
+- Do not hand-edit generated Payload types, import maps, or migration snapshots.
+- Never rewrite an applied migration; create a forward migration.
+- Ask before destructive migrations/backfills.
+- New application tables in Supabase `public` require reviewed RLS in the same migration.
+- Do not add public `anon`/`authenticated` RLS policies without authorization.
+- Use `timestamptz`/UTC for stored absolute time.
+
+Prefer cohesive existing domain boundaries. Split handwritten files when it materially improves reasoning, not merely to meet a line target.
 
 ---
 
-## 10. Code Organization
+## 10. Environment and Provider Boundaries
 
-Follow existing project domains rather than this document's hypothetical structure.
+Relevant server-only variables include, as applicable:
 
-- Components render presentation and local interaction.
-- Client modules own exact browser request/response contracts.
-- Route handlers validate the HTTP boundary and delegate.
-- Services implement workflows.
-- Repositories own locking and persistence details.
-- Provider adapters isolate Stripe, Storage, and Resend.
-- Collection configs define schema, access wiring, and concise admin metadata.
-- Hooks coordinate lifecycle events but do not hide large workflows.
-- Pure utilities contain deterministic logic.
+`DATABASE_URL`, `PAYLOAD_SECRET`, `SUPABASE_STORAGE_BUCKET`, `SUPABASE_STORAGE_ENDPOINT`, `SUPABASE_STORAGE_REGION`, `SUPABASE_STORAGE_ACCESS_KEY_ID`, `SUPABASE_STORAGE_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_BASE_URL`, `CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`, `ARTIST_ORDER_EMAIL`, and `EMAIL_DELIVERY_ENABLED`.
 
-Avoid payment, storage, email, or database logic inside React components.
+Use current configuration modules and `.env.example` as the contract. Never infer or print real values.
 
-Prefer cohesive files. Review handwritten files approaching roughly 300 lines for a meaningful split, but do not create tiny abstraction files solely to meet a line target. Generated files, migrations, and artwork are exceptions.
-
-Reuse generated Payload types and shared domain constants. Do not duplicate status values, cents rules, MIME limits, or payment mappings across client and server.
+Local Stripe webhook testing requires an active Stripe CLI listener and matching local signing secret. Production must use a configured webhook endpoint and never depend on a developer computer. Keep Cron schedules compatible with the deployed Vercel plan unless the design is explicitly changed.
 
 ---
 
-## 11. Environment and Provider Boundaries
+## 11. Chat, mission.md, and Kickoff Prompts
 
-Current server-side configuration includes, as applicable:
+Use `mission.md` for schema/migrations; authentication/authorization/privacy; Stripe/refunds/disputes/webhooks; private uploads/deletion/retention; email/providers; cleanup/cron/deployment; broad multi-state UI; or work likely to span multiple focused conversations.
 
-- `DATABASE_URL`
-- `PAYLOAD_SECRET`
-- `SUPABASE_STORAGE_BUCKET`
-- `SUPABASE_STORAGE_ENDPOINT`
-- `SUPABASE_STORAGE_REGION`
-- `SUPABASE_STORAGE_ACCESS_KEY_ID`
-- `SUPABASE_STORAGE_SECRET_ACCESS_KEY`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `APP_BASE_URL`
-- `CRON_SECRET`
-- `RESEND_API_KEY`
-- `EMAIL_FROM`
-- `EMAIL_REPLY_TO`
-- `ARTIST_ORDER_EMAIL`
-- `EMAIL_DELIVERY_ENABLED`
+For a small, low-risk, well-defined change, the approved plan in the current Desktop chat may be the task contract; a new mission file is optional.
 
-Use the actual configuration modules and `.env.example` as the current contract. Do not infer or print real values.
+When used, `mission.md` should contain one outcome, scope/out-of-scope, confirmed decisions, observable acceptance criteria, focused verification, authorized live-provider actions, and stop conditions. Do not rewrite it after implementation to match the result.
 
-Local Stripe webhook testing requires an active Stripe CLI listener and a matching local webhook signing secret. Production uses a Stripe Dashboard webhook endpoint; it must not depend on a developer machine.
-
-Vercel Hobby cron expressions must remain compatible with its scheduling limits unless deployment moves to another plan or scheduler.
+A separate kickoff prompt is useful when starting a fresh CLI/Desktop chat. It is unnecessary when the mission was discussed and approved in the same chat: the user's clear “開始工作” instruction is enough.
 
 ---
 
-## 12. Time Policy
+## 12. Documentation and Completion
 
-- Persist absolute timestamps in UTC.
-- Use IANA zone `America/New_York` for artist/business-facing display and business calendar decisions.
-- Do not hard-code EST or a fixed UTC offset; New York observes daylight saving time.
-- The public day/night scene must use New York time regardless of visitor location.
-- Preserve explicit theme query overrides for testing.
-- Tests involving time must inject/freeze time and cover at least one EST and one EDT case when relevant.
-- Vercel Cron schedules are UTC; document the local-time implication for business-sensitive schedules.
+Update documentation only when setup, environment names, scripts, operations, architecture, or manual acceptance changes. Never document real secrets/customer data.
 
----
+Keep completion reports concise:
 
-## 13. Documentation
+1. Outcome and starting/ending HEAD.
+2. Important behavior/files changed.
+3. Required acceptance evidence.
+4. Commands actually run and results.
+5. Security/data review, fixtures, migrations, and dependencies.
+6. Only useful remaining manual acceptance.
+7. Final repository/process state and confirmation that no commit/push occurred.
 
-Update documentation only when the Unit changes setup, environment names, scripts, operational behavior, architecture, or manual acceptance.
+Avoid repeating the mission or listing every untouched subsystem.
 
-Document commands and placeholders, never real secrets or customer data. Keep README changes scoped; do not restate the entire repository policy in every Unit.
-
----
-
-## 14. Completion Report
-
-Keep the report concise and include:
-
-1. **Outcome** — complete, blocked, or failed; starting/ending HEAD.
-2. **Changes** — important behavior and files.
-3. **Acceptance evidence** — each required criterion and result.
-4. **Validation** — commands actually run and results.
-5. **Security/data review** — changed trust boundaries, access, PII, secrets, fixtures, migrations, dependencies.
-6. **Manual acceptance** — only actions still useful for the user.
-7. **Repository state** — final changed files, processes/listeners, migration state, and confirmation that no commit/push occurred.
-
-Avoid repeating the mission, printing long unchanged matrices, or describing excluded systems in excessive detail. Mention material limitations and deferred risks.
-
----
-
-## 15. Mission Contract
-
-Each `mission.md` should normally contain:
-
-- Exact Phase and Unit.
-- One outcome.
-- In scope and out of scope.
-- Confirmed product decisions.
-- Observable acceptance criteria.
-- Required focused verification.
-- Authorized live-provider actions, if any.
-- Stop-and-ask conditions.
-
-The mission owns Unit-specific validation. This file must not be used to inflate a small Unit into a full-system revalidation.
-
-Do not rewrite the mission after implementation to match the result. If requirements must change materially, stop and obtain approval.
-
----
-
-## 16. Official References
-
-For version-sensitive behavior, use installed source/types and current official documentation:
-
-- Payload: https://payloadcms.com/docs
-- Payload access control: https://payloadcms.com/docs/access-control/overview
-- Payload Local API: https://payloadcms.com/docs/local-api/overview
-- Payload transactions: https://payloadcms.com/docs/database/transactions
-- Payload uploads/storage: https://payloadcms.com/docs/upload/overview
-- Stripe Checkout: https://docs.stripe.com/api/checkout/sessions/create
-- Stripe webhooks: https://docs.stripe.com/webhooks
-- Stripe refunds: https://docs.stripe.com/refunds
-- Resend send API: https://resend.com/docs/api-reference/emails/send-email
-- Vercel Cron: https://vercel.com/docs/cron-jobs
-- PostgreSQL date/time: https://www.postgresql.org/docs/current/datatype-datetime.html
-
-Use primary documentation for technical decisions. Do not browse broadly when installed code and existing tests already establish the relevant contract.
+For version-sensitive decisions, prefer installed source/types and current primary documentation: Payload, Stripe, Resend, Vercel, and PostgreSQL official docs.

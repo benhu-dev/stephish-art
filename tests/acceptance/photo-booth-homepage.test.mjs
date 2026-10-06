@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { calculateParallaxOffset } from "../../src/features/photo-booth/hooks/usePhotoBoothMotion.ts";
 
 const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -57,17 +58,32 @@ test("homepage visual foundation includes responsive, theme, focus, and reduced-
   assert.match(home, /data-theme={theme}/);
   assert.match(home, /role="img" aria-label={moment\.label}/);
   assert.match(home, /aria-labelledby="photo-booth-title"/);
+  assert.match(home, /usePhotoBoothMotion\(homeRef\)/);
+  assert.match(home, /data-parallax/);
+  assert.match(home, /data-reveal/);
   assert.match(home, /motionPreference\.matches \|\| document\.hidden/);
   assert.match(home, /video\.pause\(\)/);
   assert.match(home, /video\.play\(\)/);
   assert.match(styles, /:focus-visible/);
   assert.match(styles, /data-theme="night"/);
+  assert.match(styles, /--hero-filter:\s*brightness\(\.68\)/);
+  assert.match(styles, /--about-bg:\s*#1d373a/);
+  assert.match(styles, /--gallery-bg:\s*#10282c/);
+  assert.match(styles, /data-motion-ready="true"/);
+  assert.match(styles, /@media \(hover:\s*hover\) and \(pointer:\s*fine\)/);
   assert.match(styles, /prefers-reduced-motion:\s*reduce/);
   assert.match(styles, /orientation:\s*landscape/);
   assert.match(styles, /max-width:\s*600px/);
   assert.match(styles, /overflow-x:\s*clip/);
   assert.match(styles, /\.photo-booth-hero-video\s*\{[^}]*object-fit:\s*cover/s);
   assert.doesNotMatch(styles, /\.photo-booth-hero-video\s*\{[^}]*opacity:\s*0/s);
-  assert.match(styles, /\.photo-booth-hero-shade\s*\{[^}]*linear-gradient\(180deg,[^}]*#fffdf394/s);
+  assert.match(styles, /--hero-shade:\s*\n\s*linear-gradient\(180deg,[^;]*#fffdf394/s);
   assert.match(styles, /prefers-reduced-motion:[^}]+\}[\s\S]*\.photo-booth-hero-video\s*\{[^}]*display:\s*none/s);
+});
+
+test("editorial parallax remains centered, bounded, and reducible on mobile", () => {
+  assert.equal(calculateParallaxOffset(300, 300, 900, 20), 0);
+  assert.equal(calculateParallaxOffset(-1_000, 200, 800, 18), 18);
+  assert.equal(calculateParallaxOffset(2_000, 200, 800, 18), -18);
+  assert.ok(Math.abs(calculateParallaxOffset(-1_000, 200, 800, 18, 0.28) - 5.04) < Number.EPSILON * 8);
 });

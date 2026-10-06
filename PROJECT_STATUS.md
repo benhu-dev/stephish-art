@@ -1,6 +1,6 @@
 # Stephish Art Project Status
 
-Last reviewed: 2026-10-05
+Last reviewed: 2026-10-06
 
 ## Current repository state
 
@@ -108,6 +108,12 @@ Documentation only: update durable repository guidance, create this status sourc
 Status: complete on 2026-10-05.
 
 The homepage now includes the Photo Booth hero, local sample background video with a matching first-frame poster, motion-safe fallback, graduated milk-white readability overlay, concise artist introduction, accessible event-media placeholders, gradient transition, existing 2.5D scene integration, and shared `Drop Your Coins` entry points without changing checkout or backend behavior. Approved production video and event photos still need to replace the isolated sample and placeholders. Artist-managed homepage media remains a future schema, Storage, access, and Admin workflow Unit.
+
+### Unit 3.1.2 - Night Art Direction and Editorial Motion
+
+Status: complete on 2026-10-06.
+
+The Photo Booth introduction now gives night mode a distinct moonlit, low-saturation palette across the video overlay, artist introduction, and event gallery while preserving the approved transition into the existing night park scene. Restrained scroll-linked depth, one-time editorial reveals, and gallery-card microinteractions improve the page rhythm without scroll-jacking; mobile motion is reduced and `prefers-reduced-motion` removes the effects. The approved day palette and composition, checkout behavior, backend behavior, and the 2.5D scene remain intact. Durable repository guidance now defines the Awwwards/Webby/FWA benchmark as a quality review standard without authorizing imitation, feature expansion, or accessibility/performance regressions.
 
 ### Unit 3.2 - Artist-Managed Template Catalog
 

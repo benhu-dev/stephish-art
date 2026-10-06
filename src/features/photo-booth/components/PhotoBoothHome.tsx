@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArtisticCheckoutModal } from "../../checkout/components/ArtisticCheckoutModal";
 import { PostcardScene } from "../../postcard-machine/components/PostcardScene";
 import { useSceneTheme } from "../../postcard-machine/hooks/useSceneTheme";
+import { usePhotoBoothMotion } from "../hooks/usePhotoBoothMotion";
 import "../photo-booth.css";
 
 const EVENT_MOMENTS = [
@@ -73,6 +74,7 @@ function HeroBackgroundVideo() {
 
 export function PhotoBoothHome() {
   const theme = useSceneTheme();
+  const homeRef = useRef<HTMLElement>(null);
   const checkoutTriggerRef = useRef<HTMLButtonElement>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const openCheckout = useCallback((trigger: HTMLButtonElement) => {
@@ -80,11 +82,12 @@ export function PhotoBoothHome() {
     setCheckoutOpen(true);
   }, []);
   const closeCheckout = useCallback(() => setCheckoutOpen(false), []);
+  usePhotoBoothMotion(homeRef);
 
   return (
-    <main className="photo-booth-home" data-theme={theme}>
+    <main className="photo-booth-home" data-theme={theme} ref={homeRef}>
       <section className="photo-booth-hero" aria-labelledby="photo-booth-title">
-        <div className="photo-booth-hero-media" aria-hidden="true">
+        <div className="photo-booth-hero-media photo-booth-motion" data-parallax="18" aria-hidden="true">
           <HeroBackgroundVideo />
         </div>
         <div className="photo-booth-hero-shade" aria-hidden="true" />
@@ -94,7 +97,7 @@ export function PhotoBoothHome() {
           </a>
           <span className="photo-booth-place">New York City · Online</span>
         </header>
-        <div className="photo-booth-hero-copy">
+        <div className="photo-booth-hero-copy photo-booth-motion" data-parallax="-8">
           <p className="photo-booth-kicker">Portraits from the park, wherever you are</p>
           <h1 id="photo-booth-title">Steph&apos;s<br />Photobooth</h1>
           <p className="photo-booth-lede">
@@ -111,14 +114,14 @@ export function PhotoBoothHome() {
       </section>
 
       <section className="photo-booth-about" id="meet-stephish" aria-labelledby="about-stephish-title">
-        <div className="photo-booth-section-label">
+        <div className="photo-booth-section-label photo-booth-motion" data-reveal>
           <span>01</span>
           <p>Meet the artist</p>
         </div>
         <div className="photo-booth-about-copy">
-          <p className="photo-booth-definition">Stephish <i>(n.)</i><br /><span>Steph + fish</span></p>
-          <h2 id="about-stephish-title">A little fish swimming through the sea of art.</h2>
-          <div className="photo-booth-about-columns">
+          <p className="photo-booth-definition photo-booth-motion" data-reveal>Stephish <i>(n.)</i><br /><span>Steph + fish</span></p>
+          <h2 className="photo-booth-motion photo-booth-reveal-delay-1" data-reveal id="about-stephish-title">A little fish swimming through the sea of art.</h2>
+          <div className="photo-booth-about-columns photo-booth-motion photo-booth-reveal-delay-2" data-reveal>
             <p>
               Stephish is a Taiwanese illustrator living in New York. She started her park pop-up photobooth to meet interesting souls and bring a little lively energy to the city.
             </p>
@@ -127,7 +130,7 @@ export function PhotoBoothHome() {
             </p>
           </div>
         </div>
-        <aside className="photo-booth-note" aria-label="A note from Stephish">
+        <aside className="photo-booth-note photo-booth-motion photo-booth-reveal-delay-2" data-reveal aria-label="A note from Stephish">
           <span aria-hidden="true">↘</span>
           hoping to bring a little happiness to your heart.
         </aside>
@@ -135,16 +138,21 @@ export function PhotoBoothHome() {
 
       <section className="photo-booth-gallery" aria-labelledby="event-moments-title">
         <div className="photo-booth-gallery-heading">
-          <div className="photo-booth-section-label photo-booth-section-label-light">
+          <div className="photo-booth-section-label photo-booth-section-label-light photo-booth-motion" data-reveal>
             <span>02</span>
             <p>In the wild</p>
           </div>
-          <h2 id="event-moments-title">Little moments<br />from the park.</h2>
-          <p>Real event photos will live here. For now, these art-directed frames hold their place without changing the page structure.</p>
+          <h2 className="photo-booth-motion photo-booth-reveal-delay-1" data-reveal id="event-moments-title">Little moments<br />from the park.</h2>
+          <p className="photo-booth-motion photo-booth-reveal-delay-2" data-reveal>Real event photos will live here. For now, these art-directed frames hold their place without changing the page structure.</p>
         </div>
         <div className="photo-booth-gallery-grid">
           {EVENT_MOMENTS.map((moment, index) => (
-            <figure className={`photo-booth-moment photo-booth-moment-${moment.variant}`} key={moment.variant}>
+            <figure
+              className={`photo-booth-moment photo-booth-moment-${moment.variant} photo-booth-motion photo-booth-reveal-delay-${Math.min(index, 2)}`}
+              data-parallax={index === 1 ? "-12" : index === 2 ? "9" : "14"}
+              data-reveal
+              key={moment.variant}
+            >
               <div className="photo-booth-moment-art" role="img" aria-label={moment.label}>
                 <span className="moment-sun" />
                 <span className="moment-line moment-line-one" />

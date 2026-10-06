@@ -41,6 +41,12 @@ The approved Photo Booth product baseline is:
 
 The artist has indicated an expected ten-business-day production window before mailing, but the exact promise is not yet approved. Do not hard-code it into customer promises, deadlines, or automated actions until confirmed.
 
+### Public UI quality bar
+
+Treat Awwwards, The Webby Awards, and FWA-recognized work as the quality benchmark for public-facing UI, without copying a specific awarded site or sacrificing Stephish's original visual identity. Before reporting a public UI Unit complete, review and refine typography, whitespace, visual hierarchy, color, motion, micro-interactions, responsive composition, and originality.
+
+The review converges when there are no remaining material visual, interaction, responsive, accessibility, or performance defects; subjective preference-only alternatives do not keep a Unit open indefinitely. Preserve natural scrolling, keyboard access, readable contrast, reduced-motion behavior, and practical loading performance. Do not use award-site aesthetics to justify scroll-jacking, inaccessible text, excessive animation, unnecessary dependencies, or fragile effects.
+
 ---
 
 ## 2. Collaboration and Authorization

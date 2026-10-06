@@ -74,6 +74,8 @@ export interface Config {
     'checkout-intents': CheckoutIntent;
     'order-uploads': OrderUpload;
     'stripe-events': StripeEvent;
+    'template-media': TemplateMedia;
+    'postcard-templates': PostcardTemplate;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -92,6 +94,8 @@ export interface Config {
     'checkout-intents': CheckoutIntentsSelect<false> | CheckoutIntentsSelect<true>;
     'order-uploads': OrderUploadsSelect<false> | OrderUploadsSelect<true>;
     'stripe-events': StripeEventsSelect<false> | StripeEventsSelect<true>;
+    'template-media': TemplateMediaSelect<false> | TemplateMediaSelect<true>;
+    'postcard-templates': PostcardTemplatesSelect<false> | PostcardTemplatesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -350,6 +354,46 @@ export interface StripeEvent {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "template-media".
+ */
+export interface TemplateMedia {
+  id: number;
+  /**
+   * Describe the template artwork for customers using assistive technology.
+   */
+  alt: string;
+  prefix?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "postcard-templates".
+ */
+export interface PostcardTemplate {
+  id: number;
+  name: string;
+  description?: string | null;
+  previewMedia: number | TemplateMedia;
+  /**
+   * Lower numbers appear first. Ties are sorted by template name.
+   */
+  sortOrder: number;
+  available: boolean;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -399,6 +443,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'stripe-events';
         value: number | StripeEvent;
+      } | null)
+    | ({
+        relationTo: 'template-media';
+        value: number | TemplateMedia;
+      } | null)
+    | ({
+        relationTo: 'postcard-templates';
+        value: number | PostcardTemplate;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -583,6 +635,38 @@ export interface StripeEventsSelect<T extends boolean = true> {
   stripeCreatedAt?: T;
   processedAt?: T;
   code?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "template-media_select".
+ */
+export interface TemplateMediaSelect<T extends boolean = true> {
+  alt?: T;
+  prefix?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "postcard-templates_select".
+ */
+export interface PostcardTemplatesSelect<T extends boolean = true> {
+  name?: T;
+  description?: T;
+  previewMedia?: T;
+  sortOrder?: T;
+  available?: T;
   updatedAt?: T;
   createdAt?: T;
 }

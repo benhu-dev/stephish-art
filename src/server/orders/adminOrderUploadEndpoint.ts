@@ -1,6 +1,7 @@
 import type { Endpoint, PayloadRequest } from "payload";
 
 import { CHECKOUT_INTENT_POLICY } from "../checkout-intents/checkoutIntentPolicy";
+import { createBoundedStorageStream } from "../storage/boundedStorageStream";
 import { openOrderUploadObject } from "../storage/orderUploadObjectStorage";
 import { extensionForMimeType } from "../../components/admin/orders/orderWorkbenchContract";
 
@@ -40,40 +41,12 @@ const parseId = (value: unknown) => {
 export const createBoundedUploadStream = (
   source: ReadableStream<Uint8Array>,
   expectedBytes: number,
-) => {
-  const reader = source.getReader();
-  let receivedBytes = 0;
-  return new ReadableStream<Uint8Array>({
-    async cancel(reason) {
-      await reader.cancel(reason);
-    },
-    async pull(controller) {
-      try {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          if (receivedBytes !== expectedBytes) {
-            controller.error(new Error("UPLOAD_STREAM_LENGTH_MISMATCH"));
-          } else {
-            controller.close();
-          }
-          return;
-        }
-        receivedBytes += chunk.value.byteLength;
-        if (
-          receivedBytes > expectedBytes ||
-          receivedBytes > CHECKOUT_INTENT_POLICY.perFileUploadLimitBytes
-        ) {
-          await reader.cancel();
-          controller.error(new Error("UPLOAD_STREAM_LENGTH_MISMATCH"));
-          return;
-        }
-        controller.enqueue(chunk.value);
-      } catch {
-        controller.error(new Error("UPLOAD_STREAM_UNAVAILABLE"));
-      }
-    },
-  });
-};
+) => createBoundedStorageStream(
+  source,
+  expectedBytes,
+  CHECKOUT_INTENT_POLICY.perFileUploadLimitBytes,
+  "UPLOAD_STREAM",
+);
 
 const errorResponse = (request: PayloadRequest, error: unknown) => {
   const known =

@@ -117,9 +117,9 @@ The Photo Booth introduction now gives night mode a distinct moonlit, low-satura
 
 ### Unit 3.2 - Artist-Managed Template Catalog
 
-Status: planned; scope is not yet approved for implementation.
+Status: complete and migrated on 2026-10-06.
 
-Add the reviewed Payload schema, access rules, media handling, Admin workflow, safe public read contract, migration, and focused tests for postcard templates.
+Payload Admin now has authenticated-only `Postcard Templates` and `Template Media` collections. Templates have customer-facing names, descriptions, preview relationships, deterministic sort order, and availability; preview images require alt text and validated JPEG/PNG/WebP raster content. Media remains in the existing private Supabase bucket under the enforced `template-media/` prefix. Narrow public endpoints expose only available catalog presentation data and stream only media referenced by an available template, without exposing generic Payload CRUD, object keys, or signed URLs. Forward migration `20261006_105253_add_postcard_template_catalog` enables RLS on both new tables, adds no public policies, and was applied as database migration batch 16. Post-migration verification found zero Template Media and zero Postcard Template records; no production content was seeded.
 
 ### Unit 3.3 - Multi-Portrait Cart Domain
 

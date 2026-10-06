@@ -76,7 +76,10 @@ test("Order Uploads storage is fail-closed, server-side, path-style, and signed"
   assert.equal(options.clientUploads, false);
   assert.equal(options.disableLocalStorage, true);
   assert.equal(options.signedDownloads, true);
-  assert.deepEqual(options.collections, { "order-uploads": true });
+  assert.deepEqual(options.collections, {
+    "order-uploads": true,
+    "template-media": { prefix: "template-media" },
+  });
   assert.equal(options.config.endpoint, completeEnvironment.SUPABASE_STORAGE_ENDPOINT);
   assert.equal(options.config.region, completeEnvironment.SUPABASE_STORAGE_REGION);
   assert.equal(options.config.forcePathStyle, true);

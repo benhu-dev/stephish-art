@@ -1,5 +1,7 @@
 import type { S3StorageOptions } from "@payloadcms/storage-s3";
 
+import { TEMPLATE_MEDIA_PREFIX } from "../templates/templateMediaPolicy";
+
 export const ORDER_UPLOAD_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 
 type StorageEnvironmentName =
@@ -67,6 +69,9 @@ export const getOrderUploadStorageOptions = (
     clientUploads: false,
     collections: {
       "order-uploads": true,
+      "template-media": {
+        prefix: TEMPLATE_MEDIA_PREFIX,
+      },
     },
     config: {
       credentials: {

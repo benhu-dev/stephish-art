@@ -9,10 +9,13 @@ import { CheckoutIntents } from "./collections/CheckoutIntents";
 import { EmailOutbox } from "./collections/EmailOutbox";
 import { OrderUploads } from "./collections/OrderUploads";
 import { Orders } from "./collections/Orders";
+import { PostcardTemplates } from "./collections/PostcardTemplates";
 import { StripeEvents } from "./collections/StripeEvents";
+import { TemplateMedia } from "./collections/TemplateMedia";
 import { Users } from "./collections/Users";
 import { CheckoutSettings } from "./globals/CheckoutSettings";
 import { storefrontCheckoutIntentEndpoints } from "./server/storefront/checkoutIntentEndpoints";
+import { postcardTemplateStorefrontEndpoints } from "./server/templates/postcardTemplateEndpoints";
 import { orderFulfillmentEndpoints } from "./server/orders/orderFulfillmentEndpoint";
 import { adminOrderUploadEndpoints } from "./server/orders/adminOrderUploadEndpoint";
 import {
@@ -50,11 +53,14 @@ export default buildConfig({
     CheckoutIntents,
     OrderUploads,
     StripeEvents,
+    TemplateMedia,
+    PostcardTemplates,
   ],
   endpoints: [
     ...storefrontCheckoutIntentEndpoints,
     ...orderFulfillmentEndpoints,
     ...adminOrderUploadEndpoints,
+    ...postcardTemplateStorefrontEndpoints,
   ],
   globals: [CheckoutSettings],
   db: postgresAdapter({

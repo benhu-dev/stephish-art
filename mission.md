@@ -1,87 +1,93 @@
-# Phase 3 - Unit 3.1: Photo Booth Homepage Structure and Visual Foundation
+# Phase 3 - Unit 3.2: Artist-Managed Template Catalog
 
 ## Outcome
 
-Restructure the public homepage into a video-led Photo Booth brand experience that introduces Stephish, presents real-world event imagery, transitions naturally into the existing Manhattan park 2.5D scene, and exposes the `Drop Your Coins` purchase entry point.
+Create the secure catalog foundation for artist-managed Photo Booth postcard templates. An authenticated Payload user can manage template records and preview media, while the public storefront can read only available templates through narrow same-origin endpoints.
 
-This Unit changes homepage presentation and composition only. It must preserve the current checkout modal and all backend behavior unchanged.
+This Unit establishes the catalog and media boundaries only. It does not add template selection to the purchase modal or change checkout, pricing, uploads, Stripe, Orders, email, or fulfillment behavior.
 
 ## Product decisions
 
-1. Photo Booth is the provisional brand homepage at `/`.
-2. A detailed About page will be implemented separately; this homepage includes only a concise artist introduction.
-3. The approved existing Manhattan park, postcard machine, reversible scroll stages, New York day/night behavior, theme overrides, responsive layouts, and reduced-motion behavior remain intact.
-4. Photo Booth presentation must remain portable enough to move to a dedicated route later.
-5. User-provided sample video, gallery images, or template previews may be used when the user explicitly identifies them for development. Keep replaceable sample assets isolated from layout logic.
+1. Templates are managed through Payload Admin by authenticated `users` only.
+2. A template has a customer-facing name, optional short description, preview media, explicit sort order, and availability state.
+3. Preview media has required customer-facing alternative text and accepts only validated JPEG, PNG, or WebP raster images.
+4. Template media uses the existing approved private Supabase bucket under an isolated `template-media/` object prefix. Do not create a public bucket or anonymous Storage policy.
+5. The public storefront receives only available templates and minimum presentation metadata through controlled endpoints. Generic anonymous Payload CRUD remains denied.
+6. The initial five concepts are not seeded because final names, media, and alternative text remain unapproved production content.
+7. Future paid Orders will capture immutable template snapshots; this Unit does not change the current Order schema.
 
 ## Required behavior
 
-1. Compose the homepage in this order:
-   - a Photo Booth hero with a replaceable background video or approved temporary visual;
-   - concise Photo Booth and artist introduction;
-   - an accessible event-photo gallery;
-   - a visually continuous gradient transition;
-   - the existing 2.5D Manhattan park scene and scroll interaction.
-2. The hero must provide readable content over moving media through controlled overlays and contrast.
-3. Video behavior, when an approved video is available, must be muted, looping, inline, and non-blocking, with a poster or static fallback.
-4. Reduced-motion users must receive a stable static presentation without autoplay-dependent meaning.
-5. The existing 2.5D scene must pin and animate only within its own section. Earlier content must use ordinary document scrolling, and entry into or exit from the scene must not trap scrolling.
-6. Add a visible, keyboard-accessible `Drop Your Coins` call to action that opens the existing checkout modal without changing its request contracts, state model, copy beyond the entry label, or backend behavior.
-7. Preserve `?theme=day` and `?theme=night` deterministic overrides and New York-time default theming.
-8. Keep the page usable on desktop, portrait mobile, and landscape mobile without page-level horizontal overflow.
-9. Preserve semantic headings, keyboard operation, meaningful image alternatives, focus visibility, and sufficient text contrast.
-10. Do not load unapproved remote fonts, trackers, embeds, or media.
+1. Add a `template-media` upload collection with authenticated CRUD, required alternative text, safe Admin presentation, private S3 storage, bounded files, and actual raster validation.
+2. Add a `postcard-templates` collection with authenticated CRUD and fields for name, description, preview media, sort order, and availability.
+3. Keep template ordering deterministic by sort order and a stable tie-breaker without requiring fragile unique positions.
+4. Prevent deletion of template media while a template still references it.
+5. Add a public read-only template-list endpoint that:
+   - returns available templates only;
+   - returns a fixed minimal contract rather than Payload documents;
+   - includes same-origin preview URLs and approved image metadata;
+   - ignores client-supplied query authority;
+   - returns generic errors without internal details.
+6. Add a public preview endpoint that streams only media referenced by an available template, verifies stored metadata against the private object, and uses safe response headers.
+7. Register both collections, their storefront endpoints, and the S3 collection prefix in the existing Payload configuration.
+8. Create a forward Payload migration with RLS enabled on every new application table and no public `anon` or `authenticated` policy.
+9. Regenerate Payload types and the Admin import map only through Payload tooling when required; do not hand-edit generated output.
 
 ## Scope
 
 In scope:
 
-- homepage section composition;
-- reusable Photo Booth presentation components;
-- hero media and fallback behavior;
-- concise introduction and event-gallery presentation;
-- gradient and spatial transition into the existing scene;
-- `Drop Your Coins` entry-point wiring to the existing modal;
-- focused responsive, accessibility, motion, and browser verification.
+- template and template-media Payload collections;
+- authenticated Admin CRUD and field presentation;
+- private object-storage prefix configuration;
+- safe public catalog and preview contracts;
+- forward migration and reviewed RLS;
+- focused collection, endpoint, storage, migration, and configuration tests;
+- required generated Payload types/import-map changes.
 
 Out of scope:
 
-- template schema or Payload Admin template management;
-- multi-portrait cart, subject fields, photo mapping, per-portrait notes, or new pricing;
-- shipping, international addresses, customer policy acceptance, Stripe Session, webhook, Order, email, cleanup, or workbench changes;
-- About, Live Drawing, Portfolio, or global-navigation implementation;
-- replacing or broadly redesigning the approved 2.5D artwork;
-- copying reference files into the repository unless the user identifies them as approved development assets;
-- new dependencies without a stop-and-ask decision.
+- uploading or seeding final template assets;
+- live Supabase Storage or database mutation;
+- template selection UI or checkout-modal redesign;
+- multi-portrait cart, subjects, photo mapping, pricing, or per-portrait notes;
+- Checkout Intent, Stripe Session, webhook, Order, email, cleanup, or workbench changes;
+- public Payload collection access, public Storage, or new authentication providers;
+- Live Drawing, Portfolio, About, or global navigation;
+- new dependencies.
 
 ## Acceptance
 
-- The homepage presents the approved section order and reaches the existing scene through a coherent visual transition.
-- Ordinary page scrolling remains natural before the scene; the existing reversible scene interaction still works inside its section.
-- `Drop Your Coins` opens the unchanged checkout modal with mouse and keyboard.
-- Day, night, query overrides, reduced motion, background visibility handling, and scene reversal remain functional.
-- Hero content remains readable with media available, unavailable, loading, or disabled.
-- Gallery media has appropriate alternatives and does not cause layout shift or horizontal overflow.
-- Desktop 1440x900, portrait mobile 390x844, and landscape mobile 844x390 are usable.
-- There are no browser console errors attributable to this Unit.
-- No database, Storage, Stripe, Resend, migration, or provider mutation occurs during homepage acceptance.
+- Anonymous Payload CRUD is denied for both new collections; authenticated artists can manage them.
+- Template preview files are private, prefixed, bounded, raster-validated, and limited to JPEG, PNG, or WebP.
+- Referenced template media cannot be deleted before the referencing template is changed or removed.
+- The storefront catalog contains only available templates, sorted deterministically, and exposes no internal upload keys, signed URLs, timestamps, or Admin-only fields.
+- The preview endpoint cannot stream unreferenced or unavailable media and returns safe content headers for valid public previews.
+- The migration creates only the required catalog/media schema and lock relationships, enables RLS, and creates no public policies.
+- Existing checkout, Orders, private customer uploads, homepage, and 2.5D behavior remain unchanged.
+- No live database, Storage, Stripe, Resend, or deployment state is mutated during acceptance.
 
 ## Focused validation
 
-1. Add or update focused component and presentation coverage where it provides meaningful evidence.
-2. Run the affected homepage, scene, and checkout-entry acceptance checks.
-3. Run TypeScript.
-4. Run ESLint on changed handwritten files.
-5. Run focused browser checks at the three approved viewport classes, both themes, and reduced motion.
-6. Run one production build after the final UI state.
-7. Run `git diff --check`.
+1. Add focused acceptance tests for collection fields, access, validation hooks, configuration, storefront contracts, media authorization, and migration RLS.
+2. Confirm the focused tests fail for the missing catalog before implementation when practical.
+3. Run the focused acceptance tests after implementation.
+4. Run TypeScript.
+5. Run ESLint on changed handwritten files.
+6. Generate the migration/types/import map with Payload tooling, but do not apply the migration.
+7. Run one production build after the final schema and generated state.
+8. Run `git diff --check`.
 
-Do not run Stripe, Storage, Resend, database, migration, webhook, cleanup, email, or Admin lifecycle suites for this presentation-only Unit.
+Do not run live database, Storage, Stripe, Resend, migration-apply, webhook, checkout, email, or browser suites for this backend/catalog foundation Unit.
+
+## Authorized provider actions
+
+No live provider mutation is authorized. Creating local migration files and generated Payload artifacts is authorized; applying migrations and uploading media are not.
 
 ## Stop conditions
 
-- Stop and ask if the requested layout requires replacing approved scene artwork or changing scene interaction semantics.
-- Stop and ask before treating a reference video, screenshot, or photograph as a production asset when the user has not explicitly approved that use.
-- Stop and ask if a global navigation or About-page decision becomes necessary to complete the homepage.
-- Stop and ask if opening `Drop Your Coins` cannot be achieved without changing checkout contracts or backend behavior.
+- Stop and ask before creating a new bucket, making Storage public, or adding anonymous/authenticated database policies.
+- Stop and ask if template pricing or availability must become customer- or region-specific in this Unit.
+- Stop and ask if safe media delivery requires exposing signed object URLs or generic Payload read access.
+- Stop and ask before applying migrations or uploading production assets.
 - Do not commit or push.

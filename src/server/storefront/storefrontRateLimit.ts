@@ -12,6 +12,8 @@ import {
 export const STOREFRONT_RATE_LIMIT_POLICY = {
   abandon: { limit: 10, requiresCredential: true, windowSeconds: 15 * 60 },
   amountSave: { limit: 30, requiresCredential: true, windowSeconds: 15 * 60 },
+  cartMutate: { limit: 30, requiresCredential: true, windowSeconds: 15 * 60 },
+  cartRead: { limit: 60, requiresCredential: true, windowSeconds: 15 * 60 },
   checkoutSession: { limit: 10, requiresCredential: true, windowSeconds: 15 * 60 },
   currentRead: { limit: 60, requiresCredential: false, windowSeconds: 15 * 60 },
   intentCreate: { limit: 10, requiresCredential: false, windowSeconds: 15 * 60 },

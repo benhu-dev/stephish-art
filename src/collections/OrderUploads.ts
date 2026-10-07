@@ -1,6 +1,7 @@
 import type { CollectionConfig, PayloadRequest } from "payload";
 
 import { CHECKOUT_INTENT_POLICY } from "../server/checkout-intents/checkoutIntentPolicy";
+import { validateStoredSubjectIdList } from "../server/cart/portraitCartPolicy";
 
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   Boolean(user);
@@ -32,6 +33,32 @@ export const OrderUploads: CollectionConfig = {
       access: { update: denyAccess },
       index: true,
       relationTo: "orders",
+    },
+    {
+      name: "checkoutPortrait",
+      type: "relationship",
+      access: { update: denyAccess },
+      admin: { readOnly: true },
+      index: true,
+      relationTo: "checkout-portraits",
+    },
+    {
+      name: "subjectIds",
+      type: "json",
+      access: { update: denyAccess },
+      admin: {
+        description:
+          "Subject UUIDs represented by this photo. Populated by the portrait upload workflow.",
+        readOnly: true,
+      },
+      validate: (value: unknown) => {
+        try {
+          validateStoredSubjectIdList(value, { optional: true });
+          return true;
+        } catch {
+          return "Subject mappings must contain one to three unique subject UUIDs.";
+        }
+      },
     },
     {
       name: "position",

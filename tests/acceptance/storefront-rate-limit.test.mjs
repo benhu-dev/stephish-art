@@ -17,6 +17,8 @@ test("the centralized fixed-window policy matches every storefront action", () =
   assert.deepEqual(STOREFRONT_RATE_LIMIT_POLICY, {
     abandon: { limit: 10, requiresCredential: true, windowSeconds: 900 },
     amountSave: { limit: 30, requiresCredential: true, windowSeconds: 900 },
+    cartMutate: { limit: 30, requiresCredential: true, windowSeconds: 900 },
+    cartRead: { limit: 60, requiresCredential: true, windowSeconds: 900 },
     checkoutSession: { limit: 10, requiresCredential: true, windowSeconds: 900 },
     currentRead: { limit: 60, requiresCredential: false, windowSeconds: 900 },
     intentCreate: { limit: 10, requiresCredential: false, windowSeconds: 900 },

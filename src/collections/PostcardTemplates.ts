@@ -1,4 +1,4 @@
-import type { CollectionConfig, PayloadRequest } from "payload";
+import { APIError, type CollectionConfig, type PayloadRequest } from "payload";
 
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   user?.collection === "users";
@@ -75,5 +75,25 @@ export const PostcardTemplates: CollectionConfig = {
       required: true,
     },
   ],
+  hooks: {
+    beforeDelete: [
+      async ({ id, req }) => {
+        const drafts = await req.payload.count({
+          collection: "checkout-portraits",
+          overrideAccess: true,
+          req,
+          where: { template: { equals: id } },
+        });
+        if (drafts.totalDocs > 0) {
+          throw new APIError(
+            "This template is still selected by an active portrait draft.",
+            409,
+            null,
+            true,
+          );
+        }
+      },
+    ],
+  },
   indexes: [{ fields: ["available", "sortOrder"] }],
 };

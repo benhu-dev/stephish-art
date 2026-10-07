@@ -1,6 +1,6 @@
 # Stephish Art Project Status
 
-Last reviewed: 2026-10-06
+Last reviewed: 2026-10-07
 
 ## Current repository state
 
@@ -89,7 +89,7 @@ The repository already contains and must preserve:
 - Confirm whether the production promise is "ships within 10 business days" and define when that clock starts.
 - Confirm the international country allowlist and whether the $5 rate is sustainable for the chosen USPS service.
 - Approve final production video, event photos, template previews, artist copy, and alt text. Current reference materials are not automatically production assets.
-- Approve the exact image-to-subject identification interaction for individual and group photos.
+- Approve the final customer-facing presentation and wording for the implemented explicit image-to-subject mapping model.
 - Set per-file, per-portrait, per-cart, and per-source upload limits within the five-portrait product cap.
 - Decide image normalization, metadata removal, animated/multipage policy, and aggregate stored-byte limits.
 - Approve final shipping, production, cancellation, final-sale, damage, incorrect-order, and untracked-mail policy text before launch.
@@ -123,9 +123,9 @@ Payload Admin now has authenticated-only `Postcard Templates` and `Template Medi
 
 ### Unit 3.3 - Multi-Portrait Cart Domain
 
-Status: planned; scope is not yet approved for implementation.
+Status: implementation and database migration complete on 2026-10-07.
 
-Design and implement draft and paid snapshots for up to five portrait items, subjects, per-portrait notes, photo ownership/mapping, and server-owned pricing.
+The server now defines a private cart domain for one to five portrait items. Each portrait has one available template, one to three stable named person/pet subjects, its own artist note, deterministic position, and server-calculated 2000/2500/3000-cent price. Cookie-authorized, rate-limited endpoints provide narrow draft-cart list/add/replace/reorder/remove operations without changing the current purchase modal. Order Portraits define immutable paid template, subject, note, position, and amount snapshots for later webhook fulfillment. Order Uploads have optional forward-compatible portrait ownership and explicit subject-UUID mappings; the actual upload lifecycle remains Unit 3.4. Migration `20261007_101730_add_multi_portrait_cart_domain` adds the normalized private tables and mapping columns, enables RLS with no public policies, and keeps draft portraits lifecycle-owned by their Checkout Intent. It was applied as database migration batch 17 on 2026-10-07.
 
 ### Unit 3.4 - Upload and Draft Lifecycle Expansion
 

@@ -39,17 +39,44 @@ export const TemplateMedia: CollectionConfig = {
     },
   ],
   hooks: {
-    beforeDelete: [
-      async ({ id, req }) => {
+    beforeChange: [
+      async ({ operation, originalDoc, req }) => {
+        if (operation !== "update") return;
         const references = await req.payload.count({
-          collection: "postcard-templates",
+          collection: "order-portraits",
           overrideAccess: true,
           req,
-          where: { previewMedia: { equals: id } },
+          where: { templatePreviewMedia: { equals: originalDoc.id } },
         });
         if (references.totalDocs > 0) {
           throw new APIError(
-            "This preview is still used by a postcard template.",
+            "This preview is preserved by a paid portrait and cannot be replaced.",
+            409,
+            null,
+            true,
+          );
+        }
+      },
+    ],
+    beforeDelete: [
+      async ({ id, req }) => {
+        const [catalogReferences, paidReferences] = await Promise.all([
+          req.payload.count({
+            collection: "postcard-templates",
+            overrideAccess: true,
+            req,
+            where: { previewMedia: { equals: id } },
+          }),
+          req.payload.count({
+            collection: "order-portraits",
+            overrideAccess: true,
+            req,
+            where: { templatePreviewMedia: { equals: id } },
+          }),
+        ]);
+        if (catalogReferences.totalDocs > 0 || paidReferences.totalDocs > 0) {
+          throw new APIError(
+            "This preview is still used by a postcard template or paid portrait.",
             409,
             null,
             true,

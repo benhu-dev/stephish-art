@@ -14,6 +14,7 @@ import * as migration_20261001_084550_add_stripe_refund_dispute_reconciliation f
 import * as migration_20261002_105432_add_order_fulfillment from './20261002_105432_add_order_fulfillment';
 import * as migration_20261002_113320_add_customer_shipped_email from './20261002_113320_add_customer_shipped_email';
 import * as migration_20261006_105253_add_postcard_template_catalog from './20261006_105253_add_postcard_template_catalog';
+import * as migration_20261007_101730_add_multi_portrait_cart_domain from './20261007_101730_add_multi_portrait_cart_domain';
 
 export const migrations = [
   {
@@ -94,6 +95,11 @@ export const migrations = [
   {
     up: migration_20261006_105253_add_postcard_template_catalog.up,
     down: migration_20261006_105253_add_postcard_template_catalog.down,
-    name: '20261006_105253_add_postcard_template_catalog'
+    name: '20261006_105253_add_postcard_template_catalog',
+  },
+  {
+    up: migration_20261007_101730_add_multi_portrait_cart_domain.up,
+    down: migration_20261007_101730_add_multi_portrait_cart_domain.down,
+    name: '20261007_101730_add_multi_portrait_cart_domain'
   },
 ];

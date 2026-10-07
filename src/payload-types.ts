@@ -70,8 +70,10 @@ export interface Config {
     users: User;
     customers: Customer;
     orders: Order;
+    'order-portraits': OrderPortrait;
     'email-outbox': EmailOutbox;
     'checkout-intents': CheckoutIntent;
+    'checkout-portraits': CheckoutPortrait;
     'order-uploads': OrderUpload;
     'stripe-events': StripeEvent;
     'template-media': TemplateMedia;
@@ -90,8 +92,10 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
     orders: OrdersSelect<false> | OrdersSelect<true>;
+    'order-portraits': OrderPortraitsSelect<false> | OrderPortraitsSelect<true>;
     'email-outbox': EmailOutboxSelect<false> | EmailOutboxSelect<true>;
     'checkout-intents': CheckoutIntentsSelect<false> | CheckoutIntentsSelect<true>;
+    'checkout-portraits': CheckoutPortraitsSelect<false> | CheckoutPortraitsSelect<true>;
     'order-uploads': OrderUploadsSelect<false> | OrderUploadsSelect<true>;
     'stripe-events': StripeEventsSelect<false> | StripeEventsSelect<true>;
     'template-media': TemplateMediaSelect<false> | TemplateMediaSelect<true>;
@@ -267,6 +271,19 @@ export interface OrderUpload {
   id: number;
   checkoutIntent: number | CheckoutIntent;
   order?: (number | null) | Order;
+  checkoutPortrait?: (number | null) | CheckoutPortrait;
+  /**
+   * Subject UUIDs represented by this photo. Populated by the portrait upload workflow.
+   */
+  subjectIds?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   position: number;
   updatedAt: string;
   createdAt: string;
@@ -279,6 +296,100 @@ export interface OrderUpload {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "checkout-portraits".
+ */
+export interface CheckoutPortrait {
+  id: number;
+  intent: number | CheckoutIntent;
+  publicId: string;
+  template: number | PostcardTemplate;
+  position: number;
+  subjects: {
+    subjectId: string;
+    name: string;
+    kind: 'person' | 'pet';
+    position: number;
+    id?: string | null;
+  }[];
+  artistNote?: string | null;
+  /**
+   * Server-calculated portrait subtotal in integer USD cents.
+   */
+  amountCents: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "postcard-templates".
+ */
+export interface PostcardTemplate {
+  id: number;
+  name: string;
+  description?: string | null;
+  previewMedia: number | TemplateMedia;
+  /**
+   * Lower numbers appear first. Ties are sorted by template name.
+   */
+  sortOrder: number;
+  available: boolean;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "template-media".
+ */
+export interface TemplateMedia {
+  id: number;
+  /**
+   * Describe the template artwork for customers using assistive technology.
+   */
+  alt: string;
+  prefix?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "order-portraits".
+ */
+export interface OrderPortrait {
+  id: number;
+  order: number | Order;
+  sourceCheckoutPortraitId: string;
+  position: number;
+  templateId: number;
+  templateName: string;
+  templateDescription?: string | null;
+  templatePreviewMedia: number | TemplateMedia;
+  templatePreviewAlt: string;
+  subjects: {
+    subjectId: string;
+    name: string;
+    kind: 'person' | 'pet';
+    position: number;
+    id?: string | null;
+  }[];
+  artistNote?: string | null;
+  /**
+   * Immutable paid portrait amount in integer USD cents.
+   */
+  amountCents: number;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -354,46 +465,6 @@ export interface StripeEvent {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "template-media".
- */
-export interface TemplateMedia {
-  id: number;
-  /**
-   * Describe the template artwork for customers using assistive technology.
-   */
-  alt: string;
-  prefix?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  url?: string | null;
-  thumbnailURL?: string | null;
-  filename?: string | null;
-  mimeType?: string | null;
-  filesize?: number | null;
-  width?: number | null;
-  height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "postcard-templates".
- */
-export interface PostcardTemplate {
-  id: number;
-  name: string;
-  description?: string | null;
-  previewMedia: number | TemplateMedia;
-  /**
-   * Lower numbers appear first. Ties are sorted by template name.
-   */
-  sortOrder: number;
-  available: boolean;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -429,12 +500,20 @@ export interface PayloadLockedDocument {
         value: number | Order;
       } | null)
     | ({
+        relationTo: 'order-portraits';
+        value: number | OrderPortrait;
+      } | null)
+    | ({
         relationTo: 'email-outbox';
         value: number | EmailOutbox;
       } | null)
     | ({
         relationTo: 'checkout-intents';
         value: number | CheckoutIntent;
+      } | null)
+    | ({
+        relationTo: 'checkout-portraits';
+        value: number | CheckoutPortrait;
       } | null)
     | ({
         relationTo: 'order-uploads';
@@ -567,6 +646,33 @@ export interface OrdersSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "order-portraits_select".
+ */
+export interface OrderPortraitsSelect<T extends boolean = true> {
+  order?: T;
+  sourceCheckoutPortraitId?: T;
+  position?: T;
+  templateId?: T;
+  templateName?: T;
+  templateDescription?: T;
+  templatePreviewMedia?: T;
+  templatePreviewAlt?: T;
+  subjects?:
+    | T
+    | {
+        subjectId?: T;
+        name?: T;
+        kind?: T;
+        position?: T;
+        id?: T;
+      };
+  artistNote?: T;
+  amountCents?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "email-outbox_select".
  */
 export interface EmailOutboxSelect<T extends boolean = true> {
@@ -605,11 +711,36 @@ export interface CheckoutIntentsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "checkout-portraits_select".
+ */
+export interface CheckoutPortraitsSelect<T extends boolean = true> {
+  intent?: T;
+  publicId?: T;
+  template?: T;
+  position?: T;
+  subjects?:
+    | T
+    | {
+        subjectId?: T;
+        name?: T;
+        kind?: T;
+        position?: T;
+        id?: T;
+      };
+  artistNote?: T;
+  amountCents?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "order-uploads_select".
  */
 export interface OrderUploadsSelect<T extends boolean = true> {
   checkoutIntent?: T;
   order?: T;
+  checkoutPortrait?: T;
+  subjectIds?: T;
   position?: T;
   updatedAt?: T;
   createdAt?: T;

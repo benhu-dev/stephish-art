@@ -19,7 +19,7 @@ test("Order Uploads has the exact private upload contract", () => {
   assert.equal(OrderUploads.slug, "order-uploads");
   assert.deepEqual(
     OrderUploads.fields.map((field) => field.name),
-    ["checkoutIntent", "order", "position"],
+    ["checkoutIntent", "order", "checkoutPortrait", "subjectIds", "position"],
   );
   assert.equal(OrderUploads.admin.group, "Orders");
   assert.deepEqual(OrderUploads.admin.defaultColumns, [
@@ -51,6 +51,11 @@ test("Order Upload ownership is required, positioned, and durably linked after p
   assert.equal(fields.order.index, true);
   assert.equal(typeof fields.order.access.update, "function");
   assert.equal(await fields.order.access.update({ req: { user: {} } }), false);
+  assert.equal(fields.checkoutPortrait.type, "relationship");
+  assert.equal(fields.checkoutPortrait.relationTo, "checkout-portraits");
+  assert.equal(fields.checkoutPortrait.required, undefined);
+  assert.equal(fields.checkoutPortrait.index, true);
+  assert.equal(fields.subjectIds.type, "json");
 
   assert.equal(fields.position.type, "number");
   assert.equal(fields.position.required, true);

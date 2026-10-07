@@ -134,3 +134,35 @@ test("template media deletion is refused while a template references it", async 
     req: { payload: { count: async () => ({ totalDocs: 0 }) } },
   });
 });
+
+test("template deletion is refused while an active portrait draft references it", async () => {
+  const beforeDelete = PostcardTemplates.hooks.beforeDelete[0];
+  await assert.rejects(
+    beforeDelete({
+      id: 5,
+      req: { payload: { count: async () => ({ totalDocs: 1 }) } },
+    }),
+    /active portrait draft/,
+  );
+  await beforeDelete({
+    id: 5,
+    req: { payload: { count: async () => ({ totalDocs: 0 }) } },
+  });
+});
+
+test("paid portrait preview media cannot be replaced", async () => {
+  const beforeChange = TemplateMedia.hooks.beforeChange[0];
+  await assert.rejects(
+    beforeChange({
+      operation: "update",
+      originalDoc: { id: 7 },
+      req: { payload: { count: async () => ({ totalDocs: 1 }) } },
+    }),
+    /preserved by a paid portrait/,
+  );
+  await beforeChange({
+    operation: "update",
+    originalDoc: { id: 7 },
+    req: { payload: { count: async () => ({ totalDocs: 0 }) } },
+  });
+});

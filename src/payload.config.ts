@@ -6,14 +6,17 @@ import { buildConfig } from "payload";
 
 import { Customers } from "./collections/Customers";
 import { CheckoutIntents } from "./collections/CheckoutIntents";
+import { CheckoutPortraits } from "./collections/CheckoutPortraits";
 import { EmailOutbox } from "./collections/EmailOutbox";
 import { OrderUploads } from "./collections/OrderUploads";
+import { OrderPortraits } from "./collections/OrderPortraits";
 import { Orders } from "./collections/Orders";
 import { PostcardTemplates } from "./collections/PostcardTemplates";
 import { StripeEvents } from "./collections/StripeEvents";
 import { TemplateMedia } from "./collections/TemplateMedia";
 import { Users } from "./collections/Users";
 import { CheckoutSettings } from "./globals/CheckoutSettings";
+import { portraitCartEndpoints } from "./server/cart/portraitCartEndpoints";
 import { storefrontCheckoutIntentEndpoints } from "./server/storefront/checkoutIntentEndpoints";
 import { postcardTemplateStorefrontEndpoints } from "./server/templates/postcardTemplateEndpoints";
 import { orderFulfillmentEndpoints } from "./server/orders/orderFulfillmentEndpoint";
@@ -49,8 +52,10 @@ export default buildConfig({
     Users,
     Customers,
     Orders,
+    OrderPortraits,
     EmailOutbox,
     CheckoutIntents,
+    CheckoutPortraits,
     OrderUploads,
     StripeEvents,
     TemplateMedia,
@@ -58,6 +63,7 @@ export default buildConfig({
   ],
   endpoints: [
     ...storefrontCheckoutIntentEndpoints,
+    ...portraitCartEndpoints,
     ...orderFulfillmentEndpoints,
     ...adminOrderUploadEndpoints,
     ...postcardTemplateStorefrontEndpoints,

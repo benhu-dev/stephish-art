@@ -1,7 +1,9 @@
 import type { CollectionConfig, PayloadRequest } from "payload";
 
-import { CHECKOUT_INTENT_POLICY } from "../server/checkout-intents/checkoutIntentPolicy";
-import { validateStoredSubjectIdList } from "../server/cart/portraitCartPolicy";
+import {
+  PORTRAIT_CART_POLICY,
+  validateStoredSubjectIdList,
+} from "../server/cart/portraitCartPolicy";
 
 const isAuthenticated = ({ req: { user } }: { req: PayloadRequest }) =>
   Boolean(user);
@@ -63,7 +65,7 @@ export const OrderUploads: CollectionConfig = {
     {
       name: "position",
       type: "number",
-      max: CHECKOUT_INTENT_POLICY.maximumUploads,
+      max: PORTRAIT_CART_POLICY.maximumSubjectsPerPortrait,
       min: 1,
       required: true,
       validate: (value: unknown) =>
@@ -71,13 +73,13 @@ export const OrderUploads: CollectionConfig = {
           Number.isFinite(value) &&
           Number.isInteger(value) &&
           value >= 1 &&
-          value <= CHECKOUT_INTENT_POLICY.maximumUploads) ||
+          value <= PORTRAIT_CART_POLICY.maximumSubjectsPerPortrait) ||
         "Position must be an integer from 1 through 3.",
     },
   ],
   indexes: [
     {
-      fields: ["checkoutIntent", "position"],
+      fields: ["checkoutPortrait", "position"],
       unique: true,
     },
   ],

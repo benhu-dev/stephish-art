@@ -61,16 +61,19 @@ test("adding a portrait transactionally persists server pricing and subtotal", a
         created = structuredClone(options.data);
         return { id: 91, ...options.data };
       },
-      find: async () => ({
-        docs: created
-          ? [
-              {
-                ...created,
-                id: 91,
-                template,
-              },
-            ]
-          : [],
+      find: async (options) => ({
+        docs:
+          options.collection === "order-uploads"
+            ? []
+            : created
+              ? [
+                  {
+                    ...created,
+                    id: 91,
+                    template,
+                  },
+                ]
+              : [],
       }),
       findByID: async () => structuredClone(template),
       update: async (options) => {

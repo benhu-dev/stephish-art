@@ -1,91 +1,90 @@
-# Phase 3 - Unit 3.3: Multi-Portrait Cart Domain
+# Phase 3 - Unit 3.4: Upload and Draft Lifecycle Expansion
 
 ## Outcome
 
-Create the server-authoritative domain foundation for a Photo Booth cart containing one to five portrait items. Each draft portrait owns its template choice, one to three named subjects, per-portrait note, deterministic position, and server-calculated USD price. Define immutable paid portrait snapshot storage and explicit photo-to-subject mapping fields without yet changing the public purchase modal, upload lifecycle, Stripe checkout, webhook fulfillment, email, or artist workbench.
+Extend the private reference-photo lifecycle to the multi-portrait cart without changing the current public purchase modal or payment path. Each draft portrait can own one to three normalized private reference photos, each photo explicitly maps to one or more of that portrait's stable subject UUIDs, and safe cart reads restore the photo state needed by the future modal.
 
-The current public checkout remains operational until later Units switch the UI and payment path to this new cart domain.
+The legacy single-portrait upload endpoints remain operational until Unit 3.5 switches the public UI to the new portrait workflow.
 
-## Product decisions
+## Product and security decisions
 
-1. A self-service cart contains one to five portraits.
-2. Each portrait references one currently available postcard template while it is editable.
-3. Each portrait contains one to three subjects. Every subject has a stable UUID, a required customer-facing name, an explicit `person` or `pet` kind, and a deterministic position.
-4. People and pets use the same server-owned pricing: 2000 cents for one subject plus 500 cents for each additional subject, yielding 2000, 2500, or 3000 cents per portrait.
-5. Each portrait has its own optional artist note. The existing checkout-level note remains temporarily for backward compatibility and is not used as the new cart authority.
-6. Each future portrait upload belongs to exactly one draft portrait and stores one or more subject UUIDs. One group photo may map to multiple subjects. Before future checkout, every subject must be covered by at least one confirmed photo, and portrait photo count must be between one and its subject count.
-7. Paid portrait snapshots preserve template name, description, preview-media reference and alternative text, subjects, per-portrait note, unit amount, and position so later template edits cannot change historical purchases.
-8. Only verified Stripe webhook fulfillment may create paid Order portrait snapshots. This Unit defines their schema and validation boundary but does not connect or alter webhook fulfillment.
+1. Each portrait accepts one to three photos and never more photos than its subject count.
+2. Each photo maps to one or more known subjects in that same portrait. One group photo may cover multiple subjects.
+3. Before later checkout, every subject must be covered by at least one confirmed photo. This Unit exposes and validates readiness but does not alter Stripe checkout yet.
+4. Accepted source formats remain JPEG, PNG, and WebP. Animated and multipage images are rejected.
+5. Each source file is limited to 15 MiB and 50 megapixels.
+6. Each portrait is limited to 30 MiB of stored reference photos. The full five-portrait cart is limited to 15 photos and 100 MiB.
+7. Accepted images are auto-oriented and re-encoded in their detected format. Metadata, including EXIF and GPS data, is not copied to the stored object.
+8. JPEG and WebP normalization uses high-quality output suitable for portrait reference; PNG normalization remains lossless.
+9. Draft timing remains unchanged: a Checkout Intent is active for 24 hours and becomes cleanup-eligible after 48 hours. Paid or Order-owned uploads remain protected.
+10. Upload request and byte limits complement the existing PostgreSQL-backed rate limits; they do not create public Storage or browser-direct uploads.
 
 ## Required behavior
 
-1. Add an authenticated-only Payload collection for draft checkout portraits related to one Checkout Intent, with template, position, subjects, artist note, and server-owned amount fields.
-2. Add an authenticated read-only Payload collection for immutable paid Order portraits related to one Order, with template and subject snapshot fields, position, note, and paid unit amount.
-3. Add reusable server-only cart policy and validation functions for portrait counts, subject counts, names, kinds, UUIDs, positions, notes, prices, and photo-to-subject mappings.
-4. Add narrow same-origin, HttpOnly-cookie-authorized draft cart endpoints that can list, add, replace, reorder, and remove portrait items only while the Checkout Intent is in `draft` state.
-5. The server must load the selected template, require it to be available, calculate every portrait amount from its validated subjects, enforce unique contiguous portrait positions, and recompute the Checkout Intent subtotal transactionally after each mutation.
-6. Public responses must use a fixed minimal contract and return template presentation data, subjects, per-portrait note, unit amount, subtotal, and cart limits without internal storage keys, credentials, database metadata, or privileged Payload documents.
-7. Extend Order Upload schema with optional draft-portrait ownership and explicit mapped subject UUIDs, while leaving existing upload endpoints and lifecycle behavior unchanged until Unit 3.4.
-8. Prevent deleting template media referenced by a paid portrait snapshot. Template availability changes or edits must not mutate existing paid snapshot fields.
-9. Create one forward Payload migration for the new tables, relationships, constraints, and upload mapping columns. Enable RLS on every new application table and add no public `anon` or `authenticated` policy.
-10. Regenerate Payload types and the Admin import map only through Payload tooling when required; do not hand-edit generated output.
+1. Add a server-only portrait upload policy for per-file, pixel, per-portrait, cart-count, and cart-byte limits.
+2. Add strict multipart parsing for portrait ID, photo position, and subject UUID mappings. Reject extra fields, malformed lengths, unexpected transfer encoding, and client-supplied authority.
+3. Add narrow cookie-authorized, same-origin endpoints to upload a portrait photo, update its position/mappings, delete it, and stream its protected preview.
+4. Lock and authorize the Checkout Intent for mutations, require `draft`, resolve the portrait by its public UUID within that Intent, and reject cross-intent or cross-portrait access.
+5. Validate mappings only against that portrait's current subjects and enforce unique contiguous positions, one to three photos, no more photos than subjects, 30 MiB per portrait, 15 photos and 100 MiB per cart.
+6. Normalize images before persistence: verify actual raster content, reject animated/multipage images and more than 50 megapixels, auto-orient, re-encode without source metadata, and persist the resulting MIME type, dimensions, and byte size.
+7. Compensate Storage and database mutations on failure without exposing object keys or private metadata.
+8. Extend the safe cart response with each portrait's photos, mappings, protected preview URL, byte totals, upload limits, and an explicit readiness result. Do not expose filenames, object keys, timestamps, or signed URLs.
+9. Prevent subject replacement/removal from leaving stale upload mappings. Names and kinds may change while retaining stable subject UUIDs; removing a mapped subject must first update or remove affected photos.
+10. Preserve cleanup ordering: delete eligible unpaid objects, then upload rows, then the Intent and its draft portraits. Never delete paid, Order-owned, active, or uncertain work.
+11. Keep legacy storefront upload behavior and contracts unchanged until Unit 3.5.
 
 ## Scope
 
 In scope:
 
-- draft checkout portrait schema and authenticated Admin visibility;
-- immutable paid Order portrait snapshot schema;
-- subject identity and photo mapping representation;
-- server-owned portrait pricing and cart subtotal calculations;
-- cookie-authorized draft cart CRUD/reorder endpoints;
-- forward migration, RLS review, focused tests, generated types/import map;
-- compatibility with the current single-amount checkout until later Units switch consumers.
+- portrait-owned upload/create/update/delete/preview services and endpoints;
+- photo-to-subject mapping and recovery contracts;
+- image normalization, metadata removal, animation/multipage rejection, and pixel limits;
+- per-portrait and per-cart count/byte enforcement;
+- subject-edit consistency and draft cleanup compatibility;
+- focused acceptance tests and one authorized synthetic live database/Storage lifecycle when useful.
 
 Out of scope:
 
-- redesigning or connecting the public purchase modal;
-- changing actual upload, preview, removal, cleanup, recovery, or object-storage behavior;
-- requiring portrait ownership on existing uploads before Unit 3.4;
-- changing Stripe Session creation, shipping, webhook fulfillment, Orders, refunds, disputes, email, fulfillment, or workbench presentation;
-- applying the migration or mutating live database, Storage, Stripe, Resend, or deployment state;
+- public purchase-modal implementation or visual work;
+- changing the legacy upload UI/API before Unit 3.5;
+- Stripe Session creation, shipping, webhook fulfillment, paid Order portrait creation, refunds, disputes, email, or artist workbench presentation;
+- changing 24-hour expiry or 48-hour cleanup eligibility;
+- public Storage, signed URLs in public contracts, browser-direct uploads, or new authentication providers;
 - production content, Live Drawing, Portfolio, About, or global navigation;
-- new dependencies.
+- new dependencies;
+- applying a migration unless implementation proves that a forward migration is required and the user separately authorizes it.
 
 ## Acceptance
 
-- One authorized draft Checkout Intent can own at most five portraits with unique contiguous positions.
-- Every portrait has one available template, one to three valid named subjects, an optional bounded note, and an amount calculated only by server policy.
-- A cart mutation transactionally persists the portrait change and recomputes the Checkout Intent subtotal; client-supplied prices are rejected or ignored and never authoritative.
-- Cart endpoints reject cross-origin requests, malformed or unexpected bodies, invalid credentials, expired or non-draft intents, unavailable templates, invalid subjects, duplicate positions, and the sixth portrait.
-- Safe cart responses contain no access-token hashes, Storage keys, signed URLs, upload filenames, timestamps, or Admin-only fields.
-- Upload mapping validation supports one photo mapped to multiple known subjects, rejects unknown or duplicate subject UUIDs, and can verify that all subjects are covered with no more photos than subjects.
-- Paid portrait snapshot fields are immutable through Payload Admin/public access and remain independent from later template edits.
-- The forward migration creates only the required domain schema and relationships, enables RLS on new application tables, and creates no public policies.
-- Existing homepage, current checkout UI, existing upload lifecycle, Stripe, webhook, Order, email, cleanup, and workbench behavior remain unchanged.
+- An authorized draft portrait accepts 1–3 normalized photos, capped by subject count, with valid mappings to that portrait's subject UUIDs.
+- A group photo can cover multiple subjects and readiness is true only when all subjects are covered.
+- Cross-intent, cross-portrait, unknown-subject, duplicate-subject, invalid-position, oversized, over-count, over-budget, malformed, animated, multipage, spoofed, and over-50MP uploads fail safely.
+- Stored JPEG/PNG/WebP content is decodable, correctly oriented, and contains no copied source EXIF/GPS metadata.
+- Safe cart recovery exposes only photo ID, position, MIME type, dimensions, stored byte size, subject mappings, and a controlled preview URL.
+- Mapping/position edits remain transactional and cannot create stale subject references or non-contiguous positions.
+- Deletion removes the private object before its database row and restores the object if database persistence fails.
+- Cleanup removes eligible unpaid portrait uploads and draft portraits while preserving every paid, Order-owned, active, and uncertain record.
+- Existing homepage, current purchase modal, legacy upload lifecycle, Stripe, webhook, Order, email, and workbench behavior remain unchanged.
 
 ## Focused validation
 
-1. Add focused acceptance tests for cart policy, collection access/configuration, endpoint request contracts, authorization, transactional mutations, pricing, snapshot immutability, upload mapping representation, configuration, and migration RLS.
-2. Confirm the focused tests fail for the missing cart domain before implementation when practical.
-3. Run focused Unit 3.3 acceptance tests.
-4. Run existing focused checkout-intent, template-catalog, order-upload, and Orders collection acceptance tests affected by schema/configuration changes.
-5. Run TypeScript.
-6. Run ESLint on changed handwritten files.
-7. Generate the migration/types/import map with Payload tooling, but do not apply the migration.
-8. Run one production build after final schema and generated state.
-9. Run `git diff --check`.
-
-Do not run live database, Storage, Stripe, Resend, migration-apply, webhook, email, cleanup, or browser lifecycle suites for this domain-foundation Unit.
+1. Add focused acceptance tests for upload policy, multipart/JSON contracts, image normalization, endpoints, ownership, limits, mapping edits, safe response/recovery, subject-edit consistency, compensation, and cleanup compatibility.
+2. Confirm a focused red failure before implementation when practical.
+3. Run the new Unit 3.4 acceptance tests and existing affected cart, upload, cleanup, request-security, rate-limit, and collection tests.
+4. Run TypeScript.
+5. Run ESLint on changed handwritten and test files.
+6. Run one production build after final runtime state.
+7. Run one synthetic live database/Storage lifecycle only with explicit authorization, recording baseline/final counts and removing every fixture.
+8. Run `git diff --check`.
 
 ## Authorized provider actions
 
-No live provider mutation is authorized. Creating local migration files and generated Payload artifacts is authorized; applying migrations, uploading media, and creating provider resources are not.
+No provider mutation is authorized by this mission alone. Local code/tests/build are authorized. A synthetic database/Storage lifecycle or migration apply requires separate explicit user authorization.
 
 ## Stop conditions
 
-- Stop and ask before changing payment, shipping, webhook authority, upload retention/deletion, or the current customer-facing checkout flow.
-- Stop and ask before adding public Payload CRUD, public Storage, database policies, or exposing signed object URLs.
-- Stop and ask if safe transactional cart mutations require destructive migration or rewriting an applied migration.
-- Stop and ask before applying migrations or mutating provider state.
+- Stop and ask before changing payment, shipping, webhook authority, paid-upload retention, or the current customer-facing checkout flow.
+- Stop and ask before making Storage public, exposing object keys/signed URLs, adding database policies, introducing browser-direct uploads, or adding a dependency.
+- Stop and ask if safe implementation requires a destructive migration, rewriting an applied migration, or changing the approved file/count/byte/retention limits.
 - Do not commit or push.

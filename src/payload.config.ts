@@ -17,6 +17,7 @@ import { TemplateMedia } from "./collections/TemplateMedia";
 import { Users } from "./collections/Users";
 import { CheckoutSettings } from "./globals/CheckoutSettings";
 import { portraitCartEndpoints } from "./server/cart/portraitCartEndpoints";
+import { portraitUploadEndpoints } from "./server/cart/portraitUploadEndpoints";
 import { storefrontCheckoutIntentEndpoints } from "./server/storefront/checkoutIntentEndpoints";
 import { postcardTemplateStorefrontEndpoints } from "./server/templates/postcardTemplateEndpoints";
 import { orderFulfillmentEndpoints } from "./server/orders/orderFulfillmentEndpoint";
@@ -64,6 +65,7 @@ export default buildConfig({
   endpoints: [
     ...storefrontCheckoutIntentEndpoints,
     ...portraitCartEndpoints,
+    ...portraitUploadEndpoints,
     ...orderFulfillmentEndpoints,
     ...adminOrderUploadEndpoints,
     ...postcardTemplateStorefrontEndpoints,

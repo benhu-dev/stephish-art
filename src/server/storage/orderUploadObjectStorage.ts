@@ -77,6 +77,8 @@ export const restoreOrderUploadObject = async ({
   );
 };
 
+export const writeOrderUploadObject = restoreOrderUploadObject;
+
 export const compensateNewOrderUploadObject = async (filename: string) => {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {

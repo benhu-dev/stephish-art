@@ -20,7 +20,8 @@ export const STOREFRONT_RATE_LIMIT_POLICY = {
   noteSave: { limit: 30, requiresCredential: true, windowSeconds: 15 * 60 },
   photoPreview: { limit: 90, requiresCredential: true, windowSeconds: 15 * 60 },
   photoRemove: { limit: 20, requiresCredential: true, windowSeconds: 15 * 60 },
-  photoUpload: { limit: 12, requiresCredential: true, windowSeconds: 15 * 60 },
+  photoUpdate: { limit: 30, requiresCredential: true, windowSeconds: 15 * 60 },
+  photoUpload: { limit: 20, requiresCredential: true, windowSeconds: 15 * 60 },
   statusPoll: { limit: 90, requiresCredential: true, windowSeconds: 5 * 60 },
 } as const;
 

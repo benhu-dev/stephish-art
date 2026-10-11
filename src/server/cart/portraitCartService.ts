@@ -22,6 +22,11 @@ import {
   validateStoredPortraitSubjects,
   type PortraitMutationRequest,
 } from "./portraitCartPolicy";
+import {
+  PORTRAIT_UPLOAD_POLICY,
+  assertPortraitSubjectEditCompatible,
+  validatePortraitPhotoSet,
+} from "./portraitUploadPolicy";
 
 type PortraitDocument = Record<string, unknown> & {
   amountCents: number;
@@ -39,6 +44,17 @@ type TemplateDocument = Record<string, unknown> & {
   id: number | string;
   name: string;
   previewMedia: unknown;
+};
+
+type PortraitUploadDocument = Record<string, unknown> & {
+  checkoutPortrait?: unknown;
+  filesize?: number | null;
+  height?: number | null;
+  id: number | string;
+  mimeType?: string | null;
+  position: number;
+  subjectIds?: unknown;
+  width?: number | null;
 };
 
 const requireDraft = (intent: LockedCheckoutIntent) => {
@@ -83,6 +99,22 @@ const readPortraitDocuments = async (
     where: { intent: { equals: intentId } },
   });
   return result.docs as unknown as PortraitDocument[];
+};
+
+const readPortraitUploads = async (
+  request: PayloadRequest,
+  intentId: number,
+): Promise<PortraitUploadDocument[]> => {
+  const result = await request.payload.find({
+    collection: "order-uploads",
+    depth: 0,
+    limit: PORTRAIT_UPLOAD_POLICY.maximumFilesPerCart + 1,
+    overrideAccess: true,
+    pagination: false,
+    req: request,
+    where: { checkoutIntent: { equals: intentId } },
+  });
+  return result.docs as unknown as PortraitUploadDocument[];
 };
 
 const safeTemplate = (value: unknown) => {
@@ -139,14 +171,43 @@ const safeTemplate = (value: unknown) => {
 export const buildSafePortraitCartResponse = ({
   intentAmountCents,
   portraits: documents,
+  uploads: uploadDocuments = [],
 }: {
   intentAmountCents: number;
   portraits: PortraitDocument[];
+  uploads?: PortraitUploadDocument[];
 }) => {
   if (documents.length > PORTRAIT_CART_POLICY.maximumPortraits) {
     throw new StorefrontApiError(500, "INVALID_CART_STATE");
   }
+  if (uploadDocuments.length > PORTRAIT_UPLOAD_POLICY.maximumFilesPerCart) {
+    throw new StorefrontApiError(500, "INVALID_CART_UPLOAD_STATE");
+  }
   const publicIds = new Set<string>();
+  const internalPortraitIds = new Set(
+    documents.map((portrait) => requirePositiveInteger(portrait.id, "INVALID_CART_STATE")),
+  );
+  const uploadIds = new Set<number>();
+  const uploadsByPortrait = new Map<number, PortraitUploadDocument[]>();
+  for (const upload of uploadDocuments) {
+    if (upload.checkoutPortrait === null || upload.checkoutPortrait === undefined) {
+      continue;
+    }
+    const portraitId = requirePositiveInteger(
+      typeof upload.checkoutPortrait === "object" &&
+        upload.checkoutPortrait !== null &&
+        !Array.isArray(upload.checkoutPortrait)
+        ? (upload.checkoutPortrait as { id?: unknown }).id
+        : upload.checkoutPortrait,
+      "INVALID_CART_UPLOAD_STATE",
+    );
+    if (!internalPortraitIds.has(portraitId)) {
+      throw new StorefrontApiError(500, "INVALID_CART_UPLOAD_STATE");
+    }
+    const existing = uploadsByPortrait.get(portraitId) ?? [];
+    existing.push(upload);
+    uploadsByPortrait.set(portraitId, existing);
+  }
   const portraits = documents.map((portrait, index) => {
     if (
       !isPortraitPublicId(portrait.publicId) ||
@@ -161,12 +222,71 @@ export const buildSafePortraitCartResponse = ({
     if (portrait.amountCents !== amountCents) {
       throw new StorefrontApiError(500, "INVALID_PORTRAIT_AMOUNT");
     }
+    const portraitId = requirePositiveInteger(portrait.id, "INVALID_CART_STATE");
+    const photos = (uploadsByPortrait.get(portraitId) ?? [])
+      .sort((first, second) => first.position - second.position)
+      .map((upload) => {
+        const id = requirePositiveInteger(upload.id, "INVALID_CART_UPLOAD_STATE");
+        if (uploadIds.has(id)) {
+          throw new StorefrontApiError(500, "INVALID_CART_UPLOAD_STATE");
+        }
+        uploadIds.add(id);
+        const filesize = requirePositiveInteger(
+          upload.filesize,
+          "INVALID_CART_UPLOAD_STATE",
+        );
+        const width = requirePositiveInteger(
+          upload.width,
+          "INVALID_CART_UPLOAD_STATE",
+        );
+        const height = requirePositiveInteger(
+          upload.height,
+          "INVALID_CART_UPLOAD_STATE",
+        );
+        if (
+          typeof upload.mimeType !== "string" ||
+          !["image/jpeg", "image/png", "image/webp"].includes(upload.mimeType)
+        ) {
+          throw new StorefrontApiError(500, "INVALID_CART_UPLOAD_STATE");
+        }
+        return {
+          filesize,
+          height,
+          id,
+          mimeType: upload.mimeType,
+          position: upload.position,
+          subjectIds: upload.subjectIds,
+          width,
+        };
+      });
+    const photoState = validatePortraitPhotoSet({
+      photos: photos.map(({ filesize, id, position, subjectIds }) => ({
+        filesize,
+        id,
+        position,
+        subjectIds: subjectIds as string[],
+      })),
+      subjectIds: subjects.map(({ subjectId }) => subjectId),
+    });
     return {
       amountCents,
       artistNote:
         typeof portrait.artistNote === "string" ? portrait.artistNote : "",
       id: portrait.publicId,
       position: index + 1,
+      photoState,
+      photos: photos.map(
+        ({ filesize, height, id, mimeType, position, subjectIds, width }) => ({
+          height,
+          id,
+          mimeType,
+          position,
+          previewUrl: `/api/storefront/checkout-intents/current/cart/portraits/${portrait.publicId}/uploads/${id}/preview`,
+          sizeBytes: filesize,
+          subjectIds,
+          width,
+        }),
+      ),
       subjects: subjects.map(({ kind, name, position, subjectId }) => ({
         id: subjectId,
         kind,
@@ -193,6 +313,7 @@ export const buildSafePortraitCartResponse = ({
     limits: { ...PORTRAIT_CART_POLICY },
     portraits,
     subtotalCents,
+    uploadLimits: { ...PORTRAIT_UPLOAD_POLICY },
   };
 };
 
@@ -319,10 +440,14 @@ export const readPortraitCart = async ({
   request: PayloadRequest;
 }) => {
   const intent = await authorizeCheckoutIntent(request, credential);
-  const portraits = await readPortraitDocuments(request, intent.id);
+  const [portraits, uploads] = await Promise.all([
+    readPortraitDocuments(request, intent.id),
+    readPortraitUploads(request, intent.id),
+  ]);
   return buildSafePortraitCartResponse({
     intentAmountCents: intent.amountCents,
     portraits,
+    uploads,
   });
 };
 
@@ -367,9 +492,11 @@ export const addPortraitToCart = async ({
       intent.id,
       portraits,
     );
+    const uploads = await readPortraitUploads(request, intent.id);
     return buildSafePortraitCartResponse({
       intentAmountCents: subtotalCents,
       portraits,
+      uploads,
     });
   }, transactionDependencies);
 
@@ -395,6 +522,26 @@ export const replaceCartPortrait = async ({
       existingSubjects: validateStoredPortraitSubjects(portrait.subjects),
       requestedSubjects: input.subjects,
     });
+    const uploads = await readPortraitUploads(request, intent.id);
+    const portraitUploads = uploads.filter((upload) => {
+      const relation = upload.checkoutPortrait;
+      const relationId =
+        typeof relation === "object" && relation !== null && !Array.isArray(relation)
+          ? Number((relation as { id?: unknown }).id)
+          : Number(relation);
+      return relationId === Number(portrait.id);
+    });
+    assertPortraitSubjectEditCompatible({
+      photos: portraitUploads
+        .sort((first, second) => first.position - second.position)
+        .map((upload) => ({
+          filesize: Number(upload.filesize),
+          id: Number(upload.id),
+          position: Number(upload.position),
+          subjectIds: upload.subjectIds as string[],
+        })),
+      subjectIds: subjects.map(({ subjectId }) => subjectId),
+    });
     await request.payload.update({
       collection: "checkout-portraits",
       data: {
@@ -417,6 +564,7 @@ export const replaceCartPortrait = async ({
     return buildSafePortraitCartResponse({
       intentAmountCents: subtotalCents,
       portraits,
+      uploads,
     });
   }, transactionDependencies);
 
@@ -461,6 +609,7 @@ export const removeCartPortrait = async ({
       transaction,
     });
     const portraits = await readPortraitDocuments(request, intent.id);
+    const currentUploads = await readPortraitUploads(request, intent.id);
     const subtotalCents = await updateIntentSubtotal(
       request,
       intent.id,
@@ -469,6 +618,7 @@ export const removeCartPortrait = async ({
     return buildSafePortraitCartResponse({
       intentAmountCents: subtotalCents,
       portraits,
+      uploads: currentUploads,
     });
   }, transactionDependencies);
 
@@ -500,9 +650,11 @@ export const reorderCartPortraits = async ({
       transaction,
     });
     const portraits = await readPortraitDocuments(request, intent.id);
+    const uploads = await readPortraitUploads(request, intent.id);
     return buildSafePortraitCartResponse({
       intentAmountCents: intent.amountCents,
       portraits,
+      uploads,
     });
   }, transactionDependencies);
 

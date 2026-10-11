@@ -25,7 +25,8 @@ test("the centralized fixed-window policy matches every storefront action", () =
     noteSave: { limit: 30, requiresCredential: true, windowSeconds: 900 },
     photoPreview: { limit: 90, requiresCredential: true, windowSeconds: 900 },
     photoRemove: { limit: 20, requiresCredential: true, windowSeconds: 900 },
-    photoUpload: { limit: 12, requiresCredential: true, windowSeconds: 900 },
+    photoUpdate: { limit: 30, requiresCredential: true, windowSeconds: 900 },
+    photoUpload: { limit: 20, requiresCredential: true, windowSeconds: 900 },
     statusPoll: { limit: 90, requiresCredential: true, windowSeconds: 300 },
   });
 });

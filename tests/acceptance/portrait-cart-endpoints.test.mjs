@@ -115,6 +115,22 @@ test("safe cart responses expose presentation data without persistence details",
         },
       },
     ],
+    uploads: [
+      {
+        checkoutPortrait: 91,
+        filename: "private-reference.jpg",
+        filesize: 4096,
+        height: 1200,
+        id: 301,
+        mimeType: "image/jpeg",
+        position: 1,
+        subjectIds: [
+          "26613a1d-6cc0-4778-9508-a6cb60af9a32",
+          "bd28f154-20b3-4c69-9487-23869997dd76",
+        ],
+        width: 800,
+      },
+    ],
   });
 
   assert.equal(response.subtotalCents, 2500);
@@ -125,8 +141,32 @@ test("safe cart responses expose presentation data without persistence details",
     url: "/api/storefront/template-media/12",
     width: 600,
   });
+  assert.deepEqual(response.portraits[0].photoState, {
+    complete: true,
+    coveredSubjectIds: [
+      "26613a1d-6cc0-4778-9508-a6cb60af9a32",
+      "bd28f154-20b3-4c69-9487-23869997dd76",
+    ],
+    totalBytes: 4096,
+  });
+  assert.deepEqual(response.portraits[0].photos, [
+    {
+      height: 1200,
+      id: 301,
+      mimeType: "image/jpeg",
+      position: 1,
+      previewUrl:
+        "/api/storefront/checkout-intents/current/cart/portraits/a9f42c44-5a8b-4c2d-9431-66bd108cf261/uploads/301/preview",
+      sizeBytes: 4096,
+      subjectIds: [
+        "26613a1d-6cc0-4778-9508-a6cb60af9a32",
+        "bd28f154-20b3-4c69-9487-23869997dd76",
+      ],
+      width: 800,
+    },
+  ]);
   assert.equal(
-    /accessToken|checkoutIntent|createdAt|filename|private\.invalid|internal-array-row/.test(
+    /accessToken|checkoutIntent|createdAt|filename|private-reference|private\.invalid|internal-array-row/.test(
       JSON.stringify(response),
     ),
     false,

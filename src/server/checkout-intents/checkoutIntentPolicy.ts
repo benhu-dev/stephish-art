@@ -1,4 +1,4 @@
-import { ORDER_UPLOAD_MAX_FILE_SIZE_BYTES } from "../storage/orderUploadStorage";
+import { ORDER_UPLOAD_MAX_FILE_SIZE_BYTES } from "../storage/orderUploadPolicy";
 
 const HOUR_IN_MILLISECONDS = 60 * 60 * 1000;
 

@@ -69,7 +69,7 @@ test("Order Upload ownership is required, positioned, and durably linked after p
   }
 
   assert.deepEqual(OrderUploads.indexes, [
-    { fields: ["checkoutIntent", "position"], unique: true },
+    { fields: ["checkoutPortrait", "position"], unique: true },
   ]);
 });
 

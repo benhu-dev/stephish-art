@@ -1,0 +1,1 @@
+export const ORDER_UPLOAD_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;

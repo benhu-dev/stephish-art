@@ -1,6 +1,6 @@
 # Stephish Art Project Status
 
-Last reviewed: 2026-10-07
+Last reviewed: 2026-10-10
 
 ## Current repository state
 
@@ -66,6 +66,7 @@ The repository already contains and must preserve:
 - Each portrait has its own artist note.
 - Each portrait accepts at least one and at most three private reference photos, and never more photos than subjects.
 - A group photo may represent multiple subjects. The customer must clearly identify who appears in each image through names, image-to-subject mapping, or an equally explicit approved interaction.
+- Reference photos accept JPEG, PNG, and WebP up to 15 MiB and 50 megapixels each. A portrait is capped at three photos and 30 MiB; a cart is capped at fifteen photos and 100 MiB. Accepted images are auto-oriented and re-encoded without source metadata, while animated and multipage images are rejected.
 - Larger orders are deferred to a future artist-contact path rather than an unbounded anonymous cart.
 
 ### Shipping
@@ -90,8 +91,6 @@ The repository already contains and must preserve:
 - Confirm the international country allowlist and whether the $5 rate is sustainable for the chosen USPS service.
 - Approve final production video, event photos, template previews, artist copy, and alt text. Current reference materials are not automatically production assets.
 - Approve the final customer-facing presentation and wording for the implemented explicit image-to-subject mapping model.
-- Set per-file, per-portrait, per-cart, and per-source upload limits within the five-portrait product cap.
-- Decide image normalization, metadata removal, animated/multipage policy, and aggregate stored-byte limits.
 - Approve final shipping, production, cancellation, final-sale, damage, incorrect-order, and untracked-mail policy text before launch.
 - Decide the eventual global navigation and the requirements for the detailed About page.
 
@@ -129,9 +128,9 @@ The server now defines a private cart domain for one to five portrait items. Eac
 
 ### Unit 3.4 - Upload and Draft Lifecycle Expansion
 
-Status: planned; scope is not yet approved for implementation.
+Status: implementation and database migration complete on 2026-10-10.
 
-Extend private uploads, recovery, editing, removal, rate limits, aggregate limits, content hardening, abandonment, and cleanup for the new cart model.
+Portrait-owned private upload endpoints now support normalized photo creation, mapping/position edits, protected previews, removal, and safe cart recovery without changing the current public modal. The server enforces portrait ownership, stable subject UUID mappings, group-photo coverage, contiguous ordering, 15 MiB/50MP per-file limits, 30 MiB per portrait, and 15 files/100 MiB per cart. JPEG/PNG/WebP references are auto-oriented, re-encoded without source metadata, and rejected when animated, multipage, spoofed, malformed, or over limit. Storage writes occur outside database transactions with compensation on persistence failure; deletion revalidates after object removal and restores the object on database failure. Existing 24-hour expiry, 48-hour cleanup eligibility, paid-upload protection, legacy upload endpoints, Stripe, and the public UI remain unchanged. Forward migration `20261011_023404_support_portrait_upload_positions` changes position uniqueness from the whole Checkout Intent to each portrait while retaining a partial legacy-position constraint; it was applied as database migration batch 18 on 2026-10-10.
 
 ### Unit 3.5 - New Photo Booth Purchase Modal
 

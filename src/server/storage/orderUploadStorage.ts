@@ -2,7 +2,7 @@ import type { S3StorageOptions } from "@payloadcms/storage-s3";
 
 import { TEMPLATE_MEDIA_PREFIX } from "../templates/templateMediaPolicy";
 
-export const ORDER_UPLOAD_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+export { ORDER_UPLOAD_MAX_FILE_SIZE_BYTES } from "./orderUploadPolicy";
 
 type StorageEnvironmentName =
   | "SUPABASE_STORAGE_ACCESS_KEY_ID"

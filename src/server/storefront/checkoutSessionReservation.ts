@@ -124,6 +124,15 @@ export const reserveCheckoutAttempt = async (
   try {
     transaction = await beginStorefrontTransaction(request);
     const intent = await lockAndAuthorizeCheckoutIntent(transaction, credential);
+    const portraits = await transaction.database.execute(sql`
+      SELECT id FROM public.checkout_portraits
+      WHERE intent_id = ${intent.id}
+      LIMIT 1
+      FOR SHARE
+    `);
+    if (portraits.rows.length > 0) {
+      throw new StorefrontApiError(409, "PORTRAIT_CHECKOUT_NOT_READY");
+    }
     const expiresAtMilliseconds = new Date(intent.expiresAt).getTime();
     if (
       intent.status === "draft" &&

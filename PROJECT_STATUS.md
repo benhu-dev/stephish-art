@@ -1,6 +1,6 @@
 # Stephish Art Project Status
 
-Last reviewed: 2026-10-10
+Last reviewed: 2026-10-11
 
 ## Current repository state
 
@@ -134,9 +134,11 @@ Portrait-owned private upload endpoints now support normalized photo creation, m
 
 ### Unit 3.5 - New Photo Booth Purchase Modal
 
-Status: planned; scope is not yet approved for implementation.
+Status: implementation and focused validation complete on 2026-10-11; user visual/manual acceptance pending.
 
-Implement template selection, subject entry, photo mapping, portrait review, additional portraits, cart summary, shipping region, policies, accessibility, responsive behavior, and recovery.
+The development-only `/checkout/preview` route now opens a template-first multi-portrait modal connected to the existing narrow catalog, cookie-authorized cart and private upload APIs. It supports stable named person/pet subjects, explicit group-photo mappings, coverage checks, private blob previews, per-portrait notes, additional portraits, cart editing/removal, confirmed-state refresh/reopen recovery and uncertain-write reload protection. It presents US/international shipping estimates and the approved final-sale policy while keeping payment disabled until Unit 3.6. The production build emits a 404 for this route and the homepage purchase entry remains unchanged. Legacy amount updates share the Intent transaction lock and reject portrait carts; legacy payment reservations also reject them before provider work. No schema, migration, dependency or provider configuration changed.
+
+Focused client/domain/isolation tests, TypeScript, changed-file ESLint and the final production build passed. Isolated mocked browser checks covered two portraits, independent notes/designs, group-photo mapping edits, pending-assignment blocking, refresh recovery, portrait removal, US/international estimates, day/night presentation, desktop/mobile layouts and keyboard focus containment/restoration. Real database/Storage lifecycle fixtures and OS-level reduced-motion emulation were not run. Manual acceptance steps are in `docs/unit-3-5-acceptance.md`.
 
 ### Unit 3.6 - Stripe and International Flat Shipping
 

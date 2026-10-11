@@ -6,6 +6,54 @@ import { authorizeCheckoutIntent } from "./checkoutIntentAccess";
 import type { CheckoutIntentCredential } from "./checkoutIntentCookie";
 import { StorefrontApiError } from "./storefrontApiError";
 import type { normalizeArtistNote } from "./artistNote";
+import {
+  beginStorefrontTransaction,
+  commitStorefrontTransaction,
+  lockAndAuthorizeCheckoutIntent,
+  rollbackStorefrontTransaction,
+  type StorefrontTransaction,
+} from "./storefrontTransaction";
+
+const updateLegacyDraftAmount = async (
+  request: PayloadRequest,
+  credential: CheckoutIntentCredential,
+  amountCents: number,
+) => {
+  let transaction: StorefrontTransaction | undefined;
+  try {
+    transaction = await beginStorefrontTransaction(request);
+    const intent = await lockAndAuthorizeCheckoutIntent(
+      transaction,
+      credential,
+    );
+    if (intent.status !== "draft") {
+      throw new StorefrontApiError(409, "CHECKOUT_ALREADY_STARTED");
+    }
+    const portraits = await request.payload.count({
+      collection: "checkout-portraits",
+      overrideAccess: true,
+      req: request,
+      where: { intent: { equals: intent.id } },
+    });
+    if (portraits.totalDocs > 0) {
+      throw new StorefrontApiError(409, "PORTRAIT_CHECKOUT_NOT_READY");
+    }
+    const updated = await request.payload.update({
+      collection: "checkout-intents",
+      data: { amountCents },
+      depth: 0,
+      id: intent.id,
+      overrideAccess: true,
+      req: request,
+    });
+    await commitStorefrontTransaction(transaction);
+    transaction = undefined;
+    return updated;
+  } catch (error) {
+    await rollbackStorefrontTransaction(transaction);
+    throw error;
+  }
+};
 
 export const readMinimumAmountCents = async (request: PayloadRequest) => {
   const settings = await request.payload.findGlobal({
@@ -34,12 +82,14 @@ export const readIntentUploads = async (
     sort: "position",
     where: { checkoutIntent: { equals: intentId } },
   });
-  return result.docs as unknown as Array<Record<string, unknown> & {
-    filesize?: number | null;
-    id: number | string;
-    mimeType?: string | null;
-    position: number;
-  }>;
+  return result.docs as unknown as Array<
+    Record<string, unknown> & {
+      filesize?: number | null;
+      id: number | string;
+      mimeType?: string | null;
+      position: number;
+    }
+  >;
 };
 
 const safeState = async (
@@ -111,14 +161,11 @@ export const createOrResumeCheckoutIntent = async ({
   if (credential) {
     const existing = await authorizeCheckoutIntent(request, credential);
     if (existing.status === "draft") {
-      const updated = await request.payload.update({
-        collection: "checkout-intents",
-        data: { amountCents },
-        depth: 0,
-        id: existing.id,
-        overrideAccess: true,
-        req: request,
-      });
+      const updated = await updateLegacyDraftAmount(
+        request,
+        credential,
+        amountCents,
+      );
       const intent = {
         amountCents: Number(updated.amountCents),
         artistNote:

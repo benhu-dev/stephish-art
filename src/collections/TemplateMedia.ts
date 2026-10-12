@@ -1,4 +1,5 @@
 import { APIError, type CollectionConfig, type PayloadRequest } from "payload";
+import { protectReservedTemplateMedia } from "../server/templates/reservedTemplateMedia";
 
 import {
   TEMPLATE_MEDIA_MIME_TYPES,
@@ -42,6 +43,7 @@ export const TemplateMedia: CollectionConfig = {
     beforeChange: [
       async ({ operation, originalDoc, req }) => {
         if (operation !== "update") return;
+        await protectReservedTemplateMedia(req, originalDoc.id);
         const references = await req.payload.count({
           collection: "order-portraits",
           overrideAccess: true,
@@ -60,6 +62,7 @@ export const TemplateMedia: CollectionConfig = {
     ],
     beforeDelete: [
       async ({ id, req }) => {
+        await protectReservedTemplateMedia(req, id);
         const [catalogReferences, paidReferences] = await Promise.all([
           req.payload.count({
             collection: "postcard-templates",

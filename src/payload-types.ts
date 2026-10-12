@@ -186,6 +186,18 @@ export interface Customer {
  */
 export interface Order {
   id: number;
+  /**
+   * Immutable portrait subtotal, shipping and policy facts. Legacy orders have no snapshot.
+   */
+  portraitPaymentFacts?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   customer: number | Customer;
   checkoutIntent: number | CheckoutIntent;
   contactEmail: string;
@@ -240,6 +252,15 @@ export interface Order {
  */
 export interface CheckoutIntent {
   id: number;
+  portraitPaymentSnapshot?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   status: 'draft' | 'checkout_pending' | 'checkout_created' | 'completed' | 'expired';
   amountCents: number;
   /**
@@ -269,6 +290,7 @@ export interface CheckoutIntent {
  */
 export interface OrderUpload {
   id: number;
+  orderPortrait?: (number | null) | OrderPortrait;
   checkoutIntent: number | CheckoutIntent;
   order?: (number | null) | Order;
   checkoutPortrait?: (number | null) | CheckoutPortrait;
@@ -285,71 +307,6 @@ export interface OrderUpload {
     | boolean
     | null;
   position: number;
-  updatedAt: string;
-  createdAt: string;
-  url?: string | null;
-  thumbnailURL?: string | null;
-  filename?: string | null;
-  mimeType?: string | null;
-  filesize?: number | null;
-  width?: number | null;
-  height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "checkout-portraits".
- */
-export interface CheckoutPortrait {
-  id: number;
-  intent: number | CheckoutIntent;
-  publicId: string;
-  template: number | PostcardTemplate;
-  position: number;
-  subjects: {
-    subjectId: string;
-    name: string;
-    kind: 'person' | 'pet';
-    position: number;
-    id?: string | null;
-  }[];
-  artistNote?: string | null;
-  /**
-   * Server-calculated portrait subtotal in integer USD cents.
-   */
-  amountCents: number;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "postcard-templates".
- */
-export interface PostcardTemplate {
-  id: number;
-  name: string;
-  description?: string | null;
-  previewMedia: number | TemplateMedia;
-  /**
-   * Lower numbers appear first. Ties are sorted by template name.
-   */
-  sortOrder: number;
-  available: boolean;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "template-media".
- */
-export interface TemplateMedia {
-  id: number;
-  /**
-   * Describe the template artwork for customers using assistive technology.
-   */
-  alt: string;
-  prefix?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -388,6 +345,72 @@ export interface OrderPortrait {
    * Immutable paid portrait amount in integer USD cents.
    */
   amountCents: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "template-media".
+ */
+export interface TemplateMedia {
+  id: number;
+  /**
+   * Describe the template artwork for customers using assistive technology.
+   */
+  alt: string;
+  prefix?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "checkout-portraits".
+ */
+export interface CheckoutPortrait {
+  id: number;
+  reservedPreviewMedia?: (number | null) | TemplateMedia;
+  intent: number | CheckoutIntent;
+  publicId: string;
+  template: number | PostcardTemplate;
+  position: number;
+  subjects: {
+    subjectId: string;
+    name: string;
+    kind: 'person' | 'pet';
+    position: number;
+    id?: string | null;
+  }[];
+  artistNote?: string | null;
+  /**
+   * Server-calculated portrait subtotal in integer USD cents.
+   */
+  amountCents: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "postcard-templates".
+ */
+export interface PostcardTemplate {
+  id: number;
+  name: string;
+  description?: string | null;
+  previewMedia: number | TemplateMedia;
+  /**
+   * Lower numbers appear first. Ties are sorted by template name.
+   */
+  sortOrder: number;
+  available: boolean;
   updatedAt: string;
   createdAt: string;
 }
@@ -611,6 +634,7 @@ export interface CustomersSelect<T extends boolean = true> {
  * via the `definition` "orders_select".
  */
 export interface OrdersSelect<T extends boolean = true> {
+  portraitPaymentFacts?: T;
   customer?: T;
   checkoutIntent?: T;
   contactEmail?: T;
@@ -693,6 +717,7 @@ export interface EmailOutboxSelect<T extends boolean = true> {
  * via the `definition` "checkout-intents_select".
  */
 export interface CheckoutIntentsSelect<T extends boolean = true> {
+  portraitPaymentSnapshot?: T;
   status?: T;
   amountCents?: T;
   artistNote?: T;
@@ -714,6 +739,7 @@ export interface CheckoutIntentsSelect<T extends boolean = true> {
  * via the `definition` "checkout-portraits_select".
  */
 export interface CheckoutPortraitsSelect<T extends boolean = true> {
+  reservedPreviewMedia?: T;
   intent?: T;
   publicId?: T;
   template?: T;
@@ -737,6 +763,7 @@ export interface CheckoutPortraitsSelect<T extends boolean = true> {
  * via the `definition` "order-uploads_select".
  */
 export interface OrderUploadsSelect<T extends boolean = true> {
+  orderPortrait?: T;
   checkoutIntent?: T;
   order?: T;
   checkoutPortrait?: T;

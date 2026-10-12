@@ -11,6 +11,16 @@ import {
 const fieldMap = (collection) =>
   Object.fromEntries(collection.fields.map((field) => [field.name, field]));
 
+const mediaRequest = (count) => ({
+  transactionID: "media-test",
+  payload: {
+    db: { sessions: { "media-test": { db: { execute: async () => ({ rows: [] }) } } } },
+    count: async (query) => query.collection === "checkout-portraits"
+      ? { totalDocs: 0 }
+      : count(query),
+  },
+});
+
 const transparentPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -125,13 +135,13 @@ test("template media deletion is refused while a template references it", async 
   await assert.rejects(
     beforeDelete({
       id: 4,
-      req: { payload: { count: async () => ({ totalDocs: 1 }) } },
+      req: mediaRequest(async () => ({ totalDocs: 1 })),
     }),
     /still used by a postcard template/,
   );
   await beforeDelete({
     id: 4,
-    req: { payload: { count: async () => ({ totalDocs: 0 }) } },
+    req: mediaRequest(async () => ({ totalDocs: 0 })),
   });
 });
 
@@ -156,13 +166,13 @@ test("paid portrait preview media cannot be replaced", async () => {
     beforeChange({
       operation: "update",
       originalDoc: { id: 7 },
-      req: { payload: { count: async () => ({ totalDocs: 1 }) } },
+      req: mediaRequest(async () => ({ totalDocs: 1 })),
     }),
     /preserved by a paid portrait/,
   );
   await beforeChange({
     operation: "update",
     originalDoc: { id: 7 },
-    req: { payload: { count: async () => ({ totalDocs: 0 }) } },
+    req: mediaRequest(async () => ({ totalDocs: 0 })),
   });
 });

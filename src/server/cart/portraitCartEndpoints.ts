@@ -1,4 +1,6 @@
 import type { Endpoint, PayloadRequest } from "payload";
+import { parsePortraitCheckoutRequest } from "./portraitShippingPolicy";
+import { createOrResumeStripeCheckoutSession } from "../storefront/checkoutSessionService";
 
 import {
   clearCheckoutIntentCookie,
@@ -180,7 +182,29 @@ const reorderPortraitsHandler = async (request: PayloadRequest) => {
   }
 };
 
-const credentialAction = (action: "cartMutate" | "cartRead") =>
+export const portraitCheckoutHandler = async (
+  request: PayloadRequest,
+  createSession = createOrResumeStripeCheckoutSession,
+) => {
+  try {
+    requireSameOrigin(request);
+    requireNoQueryString(request);
+    const portraitCheckout = parsePortraitCheckoutRequest(
+      await readStorefrontJson(request),
+    );
+    const result = await createSession({
+      credential: readRequiredCredential(request),
+      request,
+      portraitCheckout,
+    });
+    return jsonResponse(result.response, result.created ? 201 : 200);
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
+const credentialAction =
+  (action: "cartMutate" | "cartRead" | "checkoutSession") =>
   (request: PayloadRequest) => {
     const parsed = parseCheckoutIntentCookie(request.headers.get("cookie"));
     return {
@@ -192,6 +216,15 @@ const credentialAction = (action: "cartMutate" | "cartRead") =>
 export const createPortraitCartEndpoints = (
   enforce: typeof enforceStorefrontRateLimit = enforceStorefrontRateLimit,
 ): Endpoint[] => [
+  {
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("checkoutSession"),
+      enforce,
+      handler: portraitCheckoutHandler,
+    }),
+    method: "post",
+    path: "/storefront/checkout-intents/current/cart/checkout-session",
+  },
   {
     handler: createRateLimitedStorefrontHandler({
       action: credentialAction("cartRead"),

@@ -23,6 +23,14 @@ export const OrderUploads: CollectionConfig = {
   },
   fields: [
     {
+      name: "orderPortrait",
+      type: "relationship",
+      relationTo: "order-portraits",
+      access: { update: denyAccess },
+      admin: { readOnly: true },
+      index: true,
+    },
+    {
       name: "checkoutIntent",
       type: "relationship",
       index: true,

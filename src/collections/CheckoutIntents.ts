@@ -35,6 +35,12 @@ export const CheckoutIntents: CollectionConfig = {
   timestamps: true,
   fields: [
     {
+      name: "portraitPaymentSnapshot",
+      type: "json",
+      access: { read: denyAccess, update: denyAccess },
+      admin: { hidden: true },
+    },
+    {
       name: "status",
       type: "select",
       defaultValue: "draft",

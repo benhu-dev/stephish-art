@@ -1,4 +1,8 @@
 import type { PayloadRequest } from "payload";
+import {
+  frozenPhotosMatchUploads,
+  readValidPortraitSnapshot,
+} from "../cart/portraitPaidGraph";
 
 import type { StripeWebhookCode } from "./stripeWebhookContract";
 import {
@@ -88,9 +92,22 @@ export const recordUnpaidStripeSession = async ({
       );
     }
     const uploads = await readWebhookUploads(transaction, intent.id);
+    const snapshot =
+      intent.portraitPaymentSnapshot == null
+        ? null
+        : readValidPortraitSnapshot(intent.portraitPaymentSnapshot);
     if (
-      !webhookUploadsAreValid(uploads) ||
-      uploads.some((upload) => upload.orderId)
+      (intent.portraitPaymentSnapshot != null && !snapshot) ||
+      Boolean(snapshot) !== (session.portraitCheckoutVersion === "1") ||
+      !(snapshot
+        ? frozenPhotosMatchUploads(snapshot, uploads)
+        : webhookUploadsAreValid(uploads)) ||
+      uploads.some(
+        (upload) =>
+          upload.orderId ||
+          upload.orderPortraitId ||
+          (!snapshot && upload.checkoutPortraitId),
+      )
     ) {
       return recordWebhookDecision(
         request,

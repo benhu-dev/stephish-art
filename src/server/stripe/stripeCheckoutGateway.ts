@@ -1,8 +1,13 @@
 import Stripe from "stripe";
+import {
+  validatePortraitPaymentSnapshot,
+  type PortraitPaymentSnapshot,
+} from "../cart/portraitPaymentSnapshot";
 
 import { readStripeCheckoutEnvironment } from "./stripeEnvironment";
 
 export type StripeCheckoutInput = {
+  portraitSnapshot?: PortraitPaymentSnapshot;
   amountCents: number;
   attemptId: string;
   baseURL: string;
@@ -45,52 +50,79 @@ export const buildStripeCheckoutSessionParams = ({
   expiresAtEpochSeconds,
   intentId,
   shippingAmountCents,
-}: StripeCheckoutInput): Stripe.Checkout.SessionCreateParams => ({
-  automatic_tax: { enabled: false },
-  cancel_url: `${baseURL}/checkout/cancelled`,
-  client_reference_id: String(intentId),
-  customer_creation: "always",
-  expires_at: expiresAtEpochSeconds,
-  invoice_creation: { enabled: false },
-  line_items: [
-    {
-      price_data: {
-        currency: "usd",
-        product_data: { name: "Custom postcard commission" },
-        unit_amount: amountCents,
-      },
-      quantity: 1,
+  portraitSnapshot,
+}: StripeCheckoutInput): Stripe.Checkout.SessionCreateParams => {
+  const portrait = portraitSnapshot
+    ? validatePortraitPaymentSnapshot(portraitSnapshot)
+    : undefined;
+  if (
+    portrait &&
+    (amountCents !== portrait.subtotalCents ||
+      shippingAmountCents !== portrait.shipping.amountCents)
+  ) {
+    throw new Error("INVALID_PORTRAIT_PAYMENT_AMOUNTS");
+  }
+  return {
+    ...(portrait
+      ? { adaptive_pricing: { enabled: false }, allow_promotion_codes: false }
+      : {}),
+    automatic_tax: { enabled: false },
+    cancel_url: `${baseURL}/checkout/cancelled`,
+    client_reference_id: String(intentId),
+    customer_creation: "always",
+    expires_at: expiresAtEpochSeconds,
+    invoice_creation: { enabled: false },
+    line_items: portrait
+      ? portrait.portraits.map((p) => ({
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `Portrait ${p.position} — ${p.templateName}`,
+            },
+            unit_amount: p.amountCents,
+          },
+          quantity: 1,
+        }))
+      : [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: { name: "Custom postcard commission" },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+    metadata: {
+      checkoutAttemptId: attemptId,
+      checkoutIntentId: String(intentId),
+      ...(portrait ? { portraitCheckoutVersion: "1" } : {}),
     },
-  ],
-  metadata: {
-    checkoutAttemptId: attemptId,
-    checkoutIntentId: String(intentId),
-  },
-  mode: "payment",
-  payment_method_types: ["card"],
-  shipping_address_collection: { allowed_countries: ["US"] },
-  shipping_options: [
-    {
-      shipping_rate_data: {
-        display_name: "Shipping",
-        fixed_amount: { amount: shippingAmountCents, currency: "usd" },
-        type: "fixed_amount",
-      },
+    mode: "payment",
+    payment_method_types: ["card"],
+    shipping_address_collection: {
+      allowed_countries: portrait
+        ? [...portrait.shipping.allowedCountries]
+        : ["US"],
     },
-  ],
-  success_url: `${baseURL}/checkout/success`,
-  wallet_options: { link: { display: "never" } },
-});
+    shipping_options: [
+      {
+        shipping_rate_data: {
+          display_name: portrait ? portrait.shipping.label : "Shipping",
+          fixed_amount: { amount: shippingAmountCents, currency: "usd" },
+          type: "fixed_amount",
+        },
+      },
+    ],
+    success_url: `${baseURL}/checkout/success`,
+    wallet_options: { link: { display: "never" } },
+  };
+};
 
 export const validateStripeCheckoutSession = (
   value: Pick<
     Stripe.Checkout.Session,
-    | "expires_at"
-    | "id"
-    | "livemode"
-    | "payment_status"
-    | "status"
-    | "url"
+    "expires_at" | "id" | "livemode" | "payment_status" | "status" | "url"
   >,
 ): SafeStripeCheckoutSession => {
   if (
@@ -150,6 +182,8 @@ export const createStripeCheckoutGateway = (): StripeCheckoutGateway => {
     expireSession: async (id) =>
       validateStripeCheckoutSession(await stripe.checkout.sessions.expire(id)),
     retrieveSession: async (id) =>
-      validateStripeCheckoutSession(await stripe.checkout.sessions.retrieve(id)),
+      validateStripeCheckoutSession(
+        await stripe.checkout.sessions.retrieve(id),
+      ),
   };
 };

@@ -1,4 +1,11 @@
 import type { PayloadRequest } from "payload";
+import {
+  createPaidPortraits,
+  frozenPhotosMatchUploads,
+  paidPortraitGraphMatches,
+  portraitOrderFacts,
+  readValidPortraitSnapshot,
+} from "../cart/portraitPaidGraph";
 
 import { createOrderEmailOutboxJobs } from "../email/emailOutbox";
 import type { StorefrontTransaction } from "../storefront/storefrontTransaction";
@@ -25,6 +32,7 @@ export type StripeWebhookTestProbe = {
   afterIntent?: () => Promise<void> | void;
   afterLedger?: () => Promise<void> | void;
   afterOrder?: () => Promise<void> | void;
+  afterPortraits?: () => Promise<void> | void;
   afterUploads?: () => Promise<void> | void;
 };
 
@@ -110,174 +118,240 @@ export const fulfillPaidStripeSession = async ({
   session: ValidatedPaidSession;
 }) => {
   let fulfilledOrderId: number | undefined;
-  const disposition = await runStripeWebhookTransaction(request, async (transaction) => {
-    const intent = await lockWebhookIntent(transaction, session.intentId);
-    const existingEvent = await lockWebhookEvent(transaction, event.id);
-    if (existingEvent && existingEvent.disposition !== "rejected") {
-      return "duplicate";
-    }
-    if (!intent) {
-      return recordWebhookDecision(
-        request,
-        event,
-        now,
-        "rejected",
-        "intent_not_found",
-        undefined,
-        existingEvent?.id,
-      );
-    }
-    const conflict = storedSessionConflict(intent, session);
-    if (conflict) {
-      return recordWebhookDecision(
-        request,
-        event,
-        now,
-        "rejected",
-        conflict,
-        intent.id,
-        existingEvent?.id,
-      );
-    }
+  const disposition = await runStripeWebhookTransaction(
+    request,
+    async (transaction) => {
+      const intent = await lockWebhookIntent(transaction, session.intentId);
+      const existingEvent = await lockWebhookEvent(transaction, event.id);
+      if (existingEvent && existingEvent.disposition !== "rejected") {
+        return "duplicate";
+      }
+      if (!intent) {
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "rejected",
+          "intent_not_found",
+          undefined,
+          existingEvent?.id,
+        );
+      }
+      const conflict = storedSessionConflict(intent, session);
+      if (conflict) {
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "rejected",
+          conflict,
+          intent.id,
+          existingEvent?.id,
+        );
+      }
 
-    if (intent.status === "completed") {
-      const existing = await validateCompletedOrder(transaction, intent, session);
-      if (!existing) throw new Error("WEBHOOK_FULFILLMENT_STATE_INVALID");
+      const portraitSnapshot =
+        intent.portraitPaymentSnapshot == null
+          ? null
+          : readValidPortraitSnapshot(intent.portraitPaymentSnapshot);
+      if (
+        (intent.portraitPaymentSnapshot != null && !portraitSnapshot) ||
+        Boolean(portraitSnapshot) !==
+          (session.portraitCheckoutVersion === "1") ||
+        (portraitSnapshot
+          ? !portraitSnapshot.shipping.allowedCountries.includes(
+              session.shippingAddress.country,
+            ) ||
+            portraitSnapshot.subtotalCents !== session.amountSubtotal ||
+            portraitSnapshot.shipping.amountCents !== session.shippingAmount ||
+            portraitSnapshot.totalCents !== session.amountTotal
+          : session.shippingAddress.country !== "US")
+      ) {
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "rejected",
+          "invalid_shipping",
+          intent.id,
+          existingEvent?.id,
+        );
+      }
+
+      if (intent.status === "completed") {
+        const existing = await validateCompletedOrder(
+          transaction,
+          intent,
+          session,
+        );
+        if (!existing) throw new Error("WEBHOOK_FULFILLMENT_STATE_INVALID");
+        const uploads = await readWebhookUploads(transaction, intent.id);
+        if (
+          !(portraitSnapshot
+            ? await paidPortraitGraphMatches({
+                request,
+                orderId: existing.id,
+                snapshot: portraitSnapshot,
+                uploads,
+                facts: existing.portraitPaymentFacts,
+              })
+            : webhookUploadsAreValid(uploads)) ||
+          uploads.some((upload) => upload.orderId !== existing.id)
+        ) {
+          throw new Error("WEBHOOK_UPLOAD_STATE_INVALID");
+        }
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "ignored",
+          "already_fulfilled",
+          intent.id,
+          existingEvent?.id,
+        );
+      }
+      if (intent.status !== "checkout_created") {
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "rejected",
+          "intent_state_conflict",
+          intent.id,
+          existingEvent?.id,
+        );
+      }
+
       const uploads = await readWebhookUploads(transaction, intent.id);
       if (
-        !webhookUploadsAreValid(uploads) ||
-        uploads.some((upload) => upload.orderId !== existing.id)
+        !(portraitSnapshot
+          ? frozenPhotosMatchUploads(portraitSnapshot, uploads)
+          : webhookUploadsAreValid(uploads)) ||
+        uploads.some(
+          (upload) =>
+            upload.orderId ||
+            upload.orderPortraitId ||
+            (!portraitSnapshot && upload.checkoutPortraitId),
+        )
       ) {
-        throw new Error("WEBHOOK_UPLOAD_STATE_INVALID");
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "rejected",
+          "invalid_uploads",
+          intent.id,
+          existingEvent?.id,
+        );
       }
-      return recordWebhookDecision(
-        request,
-        event,
-        now,
-        "ignored",
-        "already_fulfilled",
+      const orderConflicts = await readWebhookOrderConflicts(
+        transaction,
         intent.id,
-        existingEvent?.id,
+        session.sessionId,
+        session.paymentIntentId,
       );
-    }
-    if (intent.status !== "checkout_created") {
-      return recordWebhookDecision(
-        request,
-        event,
-        now,
-        "rejected",
-        "intent_state_conflict",
-        intent.id,
-        existingEvent?.id,
-      );
-    }
+      if (orderConflicts.length > 0) {
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "rejected",
+          "reconciliation_mismatch",
+          intent.id,
+          existingEvent?.id,
+        );
+      }
 
-    const uploads = await readWebhookUploads(transaction, intent.id);
-    if (
-      !webhookUploadsAreValid(uploads) ||
-      uploads.some((upload) => upload.orderId)
-    ) {
-      return recordWebhookDecision(
-        request,
-        event,
-        now,
-        "rejected",
-        "invalid_uploads",
-        intent.id,
-        existingEvent?.id,
-      );
-    }
-    const orderConflicts = await readWebhookOrderConflicts(
-      transaction,
-      intent.id,
-      session.sessionId,
-      session.paymentIntentId,
-    );
-    if (orderConflicts.length > 0) {
-      return recordWebhookDecision(
-        request,
-        event,
-        now,
-        "rejected",
-        "reconciliation_mismatch",
-        intent.id,
-        existingEvent?.id,
-      );
-    }
-
-    const customer = await resolveCustomer(request, session);
-    if (!customer) {
-      return recordWebhookDecision(
-        request,
-        event,
-        now,
-        "rejected",
-        "identity_conflict",
-        intent.id,
-        existingEvent?.id,
-      );
-    }
-    await probe.afterCustomer?.();
-    const order = await request.payload.create({
-      collection: "orders",
-      data: {
-        amountCents: session.amountTotal,
-        artistNote: intent.artistNote,
-        checkoutIntent: intent.id,
-        contactEmail: session.customerEmail,
-        currency: "usd",
-        customer: customer.id,
-        orderStatus: "unfulfilled",
-        paidAt: session.eventCreatedAt,
-        paymentStatus: "paid",
-        refundedAmountCents: 0,
-        refundState: "none",
-        shippingAddress: session.shippingAddress,
-        stripeCheckoutSessionId: session.sessionId,
-        stripePaymentIntentId: session.paymentIntentId,
-      },
-      depth: 0,
-      overrideAccess: true,
-      req: request,
-    });
-    fulfilledOrderId = Number(order.id);
-    await probe.afterOrder?.();
-    for (const upload of uploads) {
-      await request.payload.update({
-        collection: "order-uploads",
-        data: { order: order.id },
+      const customer = await resolveCustomer(request, session);
+      if (!customer) {
+        return recordWebhookDecision(
+          request,
+          event,
+          now,
+          "rejected",
+          "identity_conflict",
+          intent.id,
+          existingEvent?.id,
+        );
+      }
+      await probe.afterCustomer?.();
+      const order = await request.payload.create({
+        collection: "orders",
+        data: {
+          ...(portraitSnapshot
+            ? { portraitPaymentFacts: portraitOrderFacts(portraitSnapshot) }
+            : {}),
+          amountCents: session.amountTotal,
+          artistNote: intent.artistNote,
+          checkoutIntent: intent.id,
+          contactEmail: session.customerEmail,
+          currency: "usd",
+          customer: customer.id,
+          orderStatus: "unfulfilled",
+          paidAt: session.eventCreatedAt,
+          paymentStatus: "paid",
+          refundedAmountCents: 0,
+          refundState: "none",
+          shippingAddress: session.shippingAddress,
+          stripeCheckoutSessionId: session.sessionId,
+          stripePaymentIntentId: session.paymentIntentId,
+        },
         depth: 0,
-        id: upload.id,
         overrideAccess: true,
         req: request,
       });
-    }
-    await probe.afterUploads?.();
-    await request.payload.update({
-      collection: "checkout-intents",
-      data: { status: "completed" },
-      depth: 0,
-      id: intent.id,
-      overrideAccess: true,
-      req: request,
-    });
-    await probe.afterIntent?.();
-    await createOrderEmailOutboxJobs({
-      afterFirstJob: probe.afterFirstOutboxJob,
-      orderId: Number(order.id),
-      request,
-    });
-    await persistWebhookLedgerEntry({
-      disposition: "processed",
-      event,
-      existingEventId: existingEvent?.id,
-      intentId: intent.id,
-      now,
-      request,
-    });
-    await probe.afterLedger?.();
-    return "processed";
-  });
+      fulfilledOrderId = Number(order.id);
+      await probe.afterOrder?.();
+      const orderPortraitIds = portraitSnapshot
+        ? await createPaidPortraits(request, Number(order.id), portraitSnapshot)
+        : null;
+      await probe.afterPortraits?.();
+      for (const upload of uploads) {
+        await request.payload.update({
+          collection: "order-uploads",
+          data: {
+            order: order.id,
+            ...(orderPortraitIds
+              ? {
+                  orderPortrait: orderPortraitIds.get(
+                    upload.checkoutPortraitId!,
+                  ),
+                }
+              : {}),
+          },
+          depth: 0,
+          id: upload.id,
+          overrideAccess: true,
+          req: request,
+        });
+      }
+      await probe.afterUploads?.();
+      await request.payload.update({
+        collection: "checkout-intents",
+        data: { status: "completed" },
+        depth: 0,
+        id: intent.id,
+        overrideAccess: true,
+        req: request,
+      });
+      await probe.afterIntent?.();
+      await createOrderEmailOutboxJobs({
+        afterFirstJob: probe.afterFirstOutboxJob,
+        orderId: Number(order.id),
+        request,
+      });
+      await persistWebhookLedgerEntry({
+        disposition: "processed",
+        event,
+        existingEventId: existingEvent?.id,
+        intentId: intent.id,
+        now,
+        request,
+      });
+      await probe.afterLedger?.();
+      return "processed";
+    },
+  );
 
   if (
     disposition === "processed" &&

@@ -1,6 +1,9 @@
 import { sql } from "@payloadcms/db-postgres";
 import { randomUUID } from "node:crypto";
 import type { PayloadRequest } from "payload";
+import { reservePortraitPayment } from "../cart/portraitPaymentReservation";
+import type { PortraitPaymentSnapshot } from "../cart/portraitPaymentSnapshot";
+import type { PortraitCheckoutRequest } from "../cart/portraitShippingPolicy";
 
 import { CHECKOUT_INTENT_POLICY } from "../checkout-intents/checkoutIntentPolicy";
 import type { CheckoutIntentCredential } from "./checkoutIntentCookie";
@@ -18,6 +21,7 @@ const MINIMUM_SESSION_LIFETIME_MS = 30 * 60 * 1000;
 const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export type CheckoutSessionReservation = {
+  portraitSnapshot?: PortraitPaymentSnapshot;
   amountCents: number;
   attemptId: string;
   createdAttempt: boolean;
@@ -119,11 +123,15 @@ export const reserveCheckoutAttempt = async (
   request: PayloadRequest,
   credential: CheckoutIntentCredential,
   now: Date,
+  portraitCheckout?: PortraitCheckoutRequest,
 ): Promise<CheckoutSessionReservation> => {
   let transaction: StorefrontTransaction | undefined;
   try {
     transaction = await beginStorefrontTransaction(request);
-    const intent = await lockAndAuthorizeCheckoutIntent(transaction, credential);
+    const intent = await lockAndAuthorizeCheckoutIntent(
+      transaction,
+      credential,
+    );
     const portraits = await transaction.database.execute(sql`
       SELECT id FROM public.checkout_portraits
       WHERE intent_id = ${intent.id}
@@ -131,8 +139,18 @@ export const reserveCheckoutAttempt = async (
       FOR SHARE
     `);
     if (portraits.rows.length > 0) {
-      throw new StorefrontApiError(409, "PORTRAIT_CHECKOUT_NOT_READY");
+      const reservation = await reservePortraitPayment({
+        transaction,
+        intent,
+        input: portraitCheckout,
+        now,
+      });
+      await commitStorefrontTransaction(transaction);
+      transaction = undefined;
+      return reservation;
     }
+    if (portraitCheckout || intent.portraitPaymentSnapshot)
+      throw new StorefrontApiError(409, "PORTRAIT_CART_REQUIRED");
     const expiresAtMilliseconds = new Date(intent.expiresAt).getTime();
     if (
       intent.status === "draft" &&
@@ -156,7 +174,8 @@ export const reserveCheckoutAttempt = async (
       ) {
         throw new StorefrontApiError(422, "AMOUNT_BELOW_MINIMUM");
       }
-      const totalAmountCents = intent.amountCents + settings.shippingAmountCents;
+      const totalAmountCents =
+        intent.amountCents + settings.shippingAmountCents;
       if (!Number.isSafeInteger(totalAmountCents)) {
         throw new StorefrontApiError(422, "INVALID_AMOUNT");
       }

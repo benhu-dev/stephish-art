@@ -85,8 +85,8 @@ export const buildOrderPortraitSnapshot = ({
       optional: true,
     }),
     templateId: positiveInteger(template.id),
-    templateName: boundedText(template.name, 120),
-    templatePreviewAlt: boundedText(preview.alt, 240),
+    templateName: boundedText(template.name, 120)!,
+    templatePreviewAlt: boundedText(preview.alt, 240)!,
     templatePreviewMedia: positiveInteger(preview.id),
   };
 };

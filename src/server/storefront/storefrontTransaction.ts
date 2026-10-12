@@ -27,6 +27,7 @@ export type StorefrontTransaction = {
 };
 
 export type LockedCheckoutIntent = {
+  portraitPaymentSnapshot: unknown;
   amountCents: number;
   checkoutAttemptId: string | null;
   checkoutStartedAt: string | null;
@@ -60,8 +61,7 @@ export const beginStorefrontTransaction = async (
   }
   request.transactionID = id;
   const session = request.payload.db.sessions?.[String(id)] as
-    | TransactionSession
-    | undefined;
+    TransactionSession | undefined;
   if (!session) {
     delete request.transactionID;
     throw new StorefrontApiError(500, "TRANSACTION_SESSION_UNAVAILABLE");
@@ -79,7 +79,7 @@ export const lockAndAuthorizeCheckoutIntent = async (
     SELECT id, status, amount_cents, access_token_hash, expires_at, delete_after,
       checkout_attempt_id, checkout_started_at, shipping_amount_cents,
       total_amount_cents, stripe_checkout_session_id,
-      stripe_checkout_session_expires_at
+      stripe_checkout_session_expires_at, portrait_payment_snapshot
     FROM public.checkout_intents
     WHERE id = ${credential.intentId}
     FOR UPDATE
@@ -105,6 +105,7 @@ export const lockAndAuthorizeCheckoutIntent = async (
   }
 
   return {
+    portraitPaymentSnapshot: row.portrait_payment_snapshot ?? null,
     amountCents,
     checkoutAttemptId:
       typeof row.checkout_attempt_id === "string"

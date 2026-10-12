@@ -1,4 +1,5 @@
 import type { PayloadRequest } from "payload";
+import type { PortraitCheckoutRequest } from "../cart/portraitShippingPolicy";
 
 import {
   createStripeCheckoutGateway,
@@ -53,7 +54,10 @@ const finalizeCheckoutAttempt = async (
   let transaction: StorefrontTransaction | undefined;
   try {
     transaction = await beginStorefrontTransaction(request);
-    const intent = await lockAndAuthorizeCheckoutIntent(transaction, credential);
+    const intent = await lockAndAuthorizeCheckoutIntent(
+      transaction,
+      credential,
+    );
     if (intent.checkoutAttemptId !== reservation.attemptId) {
       throw new StorefrontApiError(409, "CHECKOUT_ATTEMPT_CONFLICT");
     }
@@ -88,7 +92,10 @@ const markExpiredSession = async (
   let transaction: StorefrontTransaction | undefined;
   try {
     transaction = await beginStorefrontTransaction(request);
-    const intent = await lockAndAuthorizeCheckoutIntent(transaction, credential);
+    const intent = await lockAndAuthorizeCheckoutIntent(
+      transaction,
+      credential,
+    );
     if (
       intent.status === "checkout_created" &&
       intent.stripeCheckoutSessionId === sessionId
@@ -109,18 +116,21 @@ export const resolveStripeCheckoutSession = async ({
   now = new Date(),
   request,
   testProbe = {},
+  portraitCheckout,
 }: {
   credential: CheckoutIntentCredential;
   gateway?: StripeCheckoutGateway;
   now?: Date;
   request: PayloadRequest;
   testProbe?: CheckoutSessionTestProbe;
+  portraitCheckout?: PortraitCheckoutRequest;
 }) => {
   const environment = readStripeCheckoutEnvironment();
   const reservation = await reserveCheckoutAttempt(
     request,
     credential,
     now,
+    portraitCheckout,
   );
 
   let session: SafeStripeCheckoutSession;
@@ -134,6 +144,9 @@ export const resolveStripeCheckoutSession = async ({
           expiresAtEpochSeconds: reservation.expiresAtEpochSeconds,
           intentId: reservation.intentId,
           shippingAmountCents: reservation.shippingAmountCents,
+          ...(reservation.portraitSnapshot
+            ? { portraitSnapshot: reservation.portraitSnapshot }
+            : {}),
         });
   } catch {
     throw new StorefrontApiError(503, "CHECKOUT_UNAVAILABLE");
@@ -150,6 +163,7 @@ export const resolveStripeCheckoutSession = async ({
 };
 
 export const createOrResumeStripeCheckoutSession = async (options: {
+  portraitCheckout?: PortraitCheckoutRequest;
   credential: CheckoutIntentCredential;
   gateway?: StripeCheckoutGateway;
   now?: Date;

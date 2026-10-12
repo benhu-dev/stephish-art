@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { PORTRAIT_SHIPPING_COUNTRIES } from "../cart/portraitShippingPolicy";
 
 import type { StripeWebhookCode } from "./stripeWebhookContract";
 
@@ -13,7 +14,7 @@ export type StripeReconciliation = {
 
 export type ShippingSnapshot = {
   city: string;
-  country: "US";
+  country: string;
   line1: string;
   line2?: string;
   postalCode?: string;
@@ -22,6 +23,7 @@ export type ShippingSnapshot = {
 };
 
 export type ValidatedSessionBase = StripeReconciliation & {
+  portraitCheckoutVersion?: "1";
   amountSubtotal: number;
   amountTotal: number;
   eventCreatedAt: string;
@@ -93,7 +95,10 @@ const readShippingAddress = (
   if (
     !shipping ||
     !address ||
-    address.country !== "US" ||
+    (session.metadata?.portraitCheckoutVersion === "1"
+      ? typeof address.country !== "string" ||
+        !PORTRAIT_SHIPPING_COUNTRIES.includes(address.country)
+      : address.country !== "US") ||
     !isBoundedString(shipping.name, 150, true) ||
     !isBoundedString(address.line1, 200, true) ||
     !isBoundedString(address.city, 100, true)
@@ -107,7 +112,7 @@ const readShippingAddress = (
 
   return {
     city: address.city,
-    country: "US",
+    country: address.country!,
     line1: address.line1,
     ...(line2 ? { line2 } : {}),
     ...(postalCode ? { postalCode } : {}),
@@ -142,9 +147,22 @@ export const validateRetrievedPaidSession = ({
     !session.id.startsWith("cs_test_") ||
     session.mode !== "payment" ||
     !matchesReconciliation(eventSession, reconciliation) ||
-    !matchesReconciliation(session, reconciliation)
+    !matchesReconciliation(session, reconciliation) ||
+    eventSession.metadata?.portraitCheckoutVersion !==
+      session.metadata?.portraitCheckoutVersion ||
+    (session.metadata?.portraitCheckoutVersion !== undefined &&
+      session.metadata.portraitCheckoutVersion !== "1")
   ) {
     return { code: "session_mismatch", kind: "rejected" };
+  }
+  if (
+    session.metadata?.portraitCheckoutVersion === "1" &&
+    (session.status !== "complete" ||
+      eventSession.status !== "complete" ||
+      session.payment_method_types?.length !== 1 ||
+      session.payment_method_types[0] !== "card")
+  ) {
+    return { code: "payment_mismatch", kind: "rejected" };
   }
   if (session.currency !== "usd") {
     return { code: "currency_mismatch", kind: "rejected" };
@@ -163,6 +181,13 @@ export const validateRetrievedPaidSession = ({
   const amountTotal = session.amount_total;
   const shippingAmount = session.total_details?.amount_shipping;
   if (
+    session.metadata?.portraitCheckoutVersion === "1" &&
+    (session.total_details?.amount_discount !== 0 ||
+      session.total_details?.amount_tax !== 0)
+  ) {
+    return { code: "amount_mismatch", kind: "rejected" };
+  }
+  if (
     !Number.isSafeInteger(amountSubtotal) ||
     amountSubtotal! < 1 ||
     !Number.isSafeInteger(shippingAmount) ||
@@ -178,6 +203,9 @@ export const validateRetrievedPaidSession = ({
   }
 
   const base: ValidatedSessionBase = {
+    ...(session.metadata?.portraitCheckoutVersion === "1"
+      ? { portraitCheckoutVersion: "1" as const }
+      : {}),
     ...reconciliation,
     amountSubtotal: amountSubtotal!,
     amountTotal: amountTotal!,

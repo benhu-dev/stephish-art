@@ -56,6 +56,12 @@ export const Orders: CollectionConfig = {
   disableDuplicate: true,
   fields: [
     {
+      name: "portraitPaymentFacts",
+      type: "json",
+      access: { update: denyAccess },
+      admin: { readOnly: true, description: "Immutable portrait subtotal, shipping and policy facts. Legacy orders have no snapshot." },
+    },
+    {
       name: "workbench",
       type: "ui",
       admin: {

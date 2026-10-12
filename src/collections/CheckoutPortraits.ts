@@ -37,6 +37,13 @@ export const CheckoutPortraits: CollectionConfig = {
   disableDuplicate: true,
   fields: [
     {
+      name: "reservedPreviewMedia",
+      type: "relationship",
+      relationTo: "template-media",
+      access: { read: denyAccess, update: denyAccess },
+      admin: { hidden: true },
+    },
+    {
       name: "intent",
       type: "relationship",
       index: true,

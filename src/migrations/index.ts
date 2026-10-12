@@ -16,6 +16,7 @@ import * as migration_20261002_113320_add_customer_shipped_email from './2026100
 import * as migration_20261006_105253_add_postcard_template_catalog from './20261006_105253_add_postcard_template_catalog';
 import * as migration_20261007_101730_add_multi_portrait_cart_domain from './20261007_101730_add_multi_portrait_cart_domain';
 import * as migration_20261011_023404_support_portrait_upload_positions from './20261011_023404_support_portrait_upload_positions';
+import * as migration_20261012_103336_add_portrait_payment_snapshots from './20261012_103336_add_portrait_payment_snapshots';
 
 export const migrations = [
   {
@@ -106,6 +107,11 @@ export const migrations = [
   {
     up: migration_20261011_023404_support_portrait_upload_positions.up,
     down: migration_20261011_023404_support_portrait_upload_positions.down,
-    name: '20261011_023404_support_portrait_upload_positions'
+    name: '20261011_023404_support_portrait_upload_positions',
+  },
+  {
+    up: migration_20261012_103336_add_portrait_payment_snapshots.up,
+    down: migration_20261012_103336_add_portrait_payment_snapshots.down,
+    name: '20261012_103336_add_portrait_payment_snapshots'
   },
 ];

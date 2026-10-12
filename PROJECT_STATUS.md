@@ -1,6 +1,6 @@
 # Stephish Art Project Status
 
-Last reviewed: 2026-10-11
+Last reviewed: 2026-10-12
 
 ## Current repository state
 
@@ -134,7 +134,7 @@ Portrait-owned private upload endpoints now support normalized photo creation, m
 
 ### Unit 3.5 - New Photo Booth Purchase Modal
 
-Status: implementation and focused validation complete on 2026-10-11; user visual/manual acceptance pending.
+Status: implementation, focused validation and user visual/manual acceptance complete on 2026-10-11.
 
 The development-only `/checkout/preview` route now opens a template-first multi-portrait modal connected to the existing narrow catalog, cookie-authorized cart and private upload APIs. It supports stable named person/pet subjects, explicit group-photo mappings, coverage checks, private blob previews, per-portrait notes, additional portraits, cart editing/removal, confirmed-state refresh/reopen recovery and uncertain-write reload protection. It presents US/international shipping estimates and the approved final-sale policy while keeping payment disabled until Unit 3.6. The production build emits a 404 for this route and the homepage purchase entry remains unchanged. Legacy amount updates share the Intent transaction lock and reject portrait carts; legacy payment reservations also reject them before provider work. No schema, migration, dependency or provider configuration changed.
 
@@ -142,15 +142,29 @@ Focused client/domain/isolation tests, TypeScript, changed-file ESLint and the f
 
 ### Unit 3.6 - Stripe and International Flat Shipping
 
-Status: planned; scope is not yet approved for implementation.
+Status: approved on 2026-10-12 and split into two focused deliveries. International development destinations are provisionally all concretely enumerated Stripe-supported countries except unknown placeholders; final production destinations remain pending.
 
-Create authoritative multi-item Checkout Sessions, collect approved destinations, apply one flat shipping charge, verify totals and country during webhooks, and create the immutable paid Order graph.
+#### Unit 3.6.1 - Multi-Portrait Payment Core
+
+Status: implementation, local validation and database migration complete on 2026-10-12; live payment lifecycle acceptance pending.
+
+A narrow cookie-authorized, same-origin, rate-limited portrait payment endpoint now reserves immutable cart, photo mapping, template and policy snapshots before provider work. Stripe receives one server-priced line per portrait and one flat shipping rate; region-restricted countries prevent US addresses from selecting the 500-cent international rate. US tracked shipping is 1000 cents. Portrait payments remain Sandbox/card-only with Link, Adaptive Pricing and promotion codes disabled. Retries use the original frozen parameters and random attempt, including uncertain provider creation/finalization. Reserved preview media is protected from replacement/deletion with transaction-aware row locking.
+
+Verified paid fulfillment validates frozen countries, exact amounts and upload ownership/mappings, transactionally creates all immutable Order Portraits and associates every upload with its paid portrait. Existing paid authority, private photos, refund/dispute reconciliation and outbox behavior are preserved. The homepage and development preview payment availability are unchanged.
+
+Forward migration `20261012_103336_add_portrait_payment_snapshots` adds nullable payment snapshots, reserved preview references and paid portrait upload relationships; it was applied with user approval as database migration batch 19 on 2026-10-12. Post-apply read-only checks confirmed all four columns, both foreign keys and both indexes; all four affected tables retain RLS with zero policies. Baseline/final business-row counts were unchanged. No data backfill, new public policies, dependency/environment changes or live-provider fixtures were performed. Focused mocked tests, TypeScript, changed-file ESLint and production build passed. Actual database locking/lifecycle and Stripe Sandbox acceptance remain unverified; see `docs/unit-3-6-1-acceptance.md`.
+
+#### Unit 3.6.2 - Public Checkout Rollout and Minimum Artist Workbench
+
+Status: delivery direction approved; implementation not started.
+
+Connect the accepted multi-portrait UI to payment and complete cancellation/resume/recovery. Move the minimum artist visibility from Unit 3.7 forward so every portrait's template, subjects, notes and up to fifteen Order photos are accessible before switching homepage purchase entry points. Do not release a multi-portrait storefront with the legacy three-photo workbench limit. Complete actual lifecycle and customer/artist acceptance before rollout.
 
 ### Unit 3.7 - Artist Workbench Expansion
 
 Status: planned; scope is not yet approved for implementation.
 
-Present each paid portrait's template, subjects, photos, note, amounts, shipping class, and production deadline in the existing secure workbench and adapt fulfillment/email presentation.
+Polish the expanded secure workbench and adapt fulfillment/email presentation after the minimum visibility needed for Unit 3.6.2. Production deadlines remain blocked on the artist's explicit timing promise.
 
 ### Unit 3.8 - Policy and Production Readiness
 

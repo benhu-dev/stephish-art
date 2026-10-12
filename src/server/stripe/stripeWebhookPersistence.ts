@@ -19,6 +19,7 @@ export type WebhookEventEnvelope = {
 };
 
 export type WebhookIntent = {
+  portraitPaymentSnapshot?: unknown;
   amountCents: number;
   artistNote: string | null;
   attemptId: string | null;
@@ -33,6 +34,11 @@ export type WebhookIntent = {
 };
 
 export type WebhookUpload = {
+  checkoutPortraitId?: number | null;
+  orderPortraitId?: number | null;
+  subjectIds?: unknown;
+  width?: number;
+  height?: number;
   filename: string | null;
   filesize: number;
   id: number;
@@ -42,6 +48,7 @@ export type WebhookUpload = {
 };
 
 export type WebhookOrder = {
+  portraitPaymentFacts?: unknown;
   amountCents: number;
   artistNote: string | null;
   checkoutIntentId: number;
@@ -88,7 +95,7 @@ export const lockWebhookIntent = async (
   const result = await transaction.database.execute(sql`
     SELECT id, status, amount_cents, artist_note, expires_at, checkout_attempt_id,
       checkout_started_at, shipping_amount_cents, total_amount_cents,
-      stripe_checkout_session_id, stripe_checkout_session_expires_at
+      stripe_checkout_session_id, stripe_checkout_session_expires_at, portrait_payment_snapshot
     FROM public.checkout_intents
     WHERE id = ${intentId}
     FOR UPDATE
@@ -97,6 +104,7 @@ export const lockWebhookIntent = async (
   if (!row) return null;
 
   return {
+    portraitPaymentSnapshot: row.portrait_payment_snapshot ?? null,
     amountCents: Number(row.amount_cents),
     artistNote: typeof row.artist_note === "string" ? row.artist_note : null,
     attemptId:
@@ -133,7 +141,8 @@ export const readWebhookUploads = async (
   intentId: number,
 ): Promise<WebhookUpload[]> => {
   const result = await transaction.database.execute(sql`
-    SELECT id, position, filename, mime_type, filesize, order_id
+    SELECT id, position, filename, mime_type, filesize, order_id,
+      checkout_portrait_id, order_portrait_id, subject_ids, width, height
     FROM public.order_uploads
     WHERE checkout_intent_id = ${intentId}
     ORDER BY position
@@ -141,6 +150,15 @@ export const readWebhookUploads = async (
   `);
 
   return result.rows.map((row) => ({
+    checkoutPortraitId:
+      row.checkout_portrait_id == null
+        ? null
+        : Number(row.checkout_portrait_id),
+    orderPortraitId:
+      row.order_portrait_id == null ? null : Number(row.order_portrait_id),
+    subjectIds: row.subject_ids,
+    width: Number(row.width),
+    height: Number(row.height),
     filename: typeof row.filename === "string" ? row.filename : null,
     filesize: Number(row.filesize),
     id: Number(row.id),
@@ -160,7 +178,7 @@ export const readWebhookOrderConflicts = async (
   paymentIntentId: string,
 ): Promise<WebhookOrder[]> => {
   const result = await transaction.database.execute(sql`
-    SELECT id, checkout_intent_id, amount_cents, artist_note, currency,
+    SELECT id, checkout_intent_id, amount_cents, artist_note, currency, portrait_payment_facts,
       stripe_checkout_session_id, stripe_payment_intent_id
     FROM public.orders
     WHERE checkout_intent_id = ${intentId}
@@ -170,6 +188,7 @@ export const readWebhookOrderConflicts = async (
   `);
 
   return result.rows.map((row) => ({
+    portraitPaymentFacts: row.portrait_payment_facts ?? null,
     amountCents: Number(row.amount_cents),
     artistNote: typeof row.artist_note === "string" ? row.artist_note : null,
     checkoutIntentId: Number(row.checkout_intent_id),
@@ -209,9 +228,7 @@ export const lockWebhookOrderByPaymentIntent = async (
     refundedAmountCents: Number(row.refunded_amount_cents),
     sessionId: String(row.stripe_checkout_session_id),
     stripeDisputeId:
-      typeof row.stripe_dispute_id === "string"
-        ? row.stripe_dispute_id
-        : null,
+      typeof row.stripe_dispute_id === "string" ? row.stripe_dispute_id : null,
     stripeDisputeStatus:
       typeof row.stripe_dispute_status === "string"
         ? row.stripe_dispute_status

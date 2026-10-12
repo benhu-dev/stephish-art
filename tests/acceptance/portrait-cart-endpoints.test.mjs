@@ -12,6 +12,10 @@ test("portrait cart endpoints expose only the intended cookie-authorized routes"
     portraitCartEndpoints.map(({ method, path }) => ({ method, path })),
     [
       {
+        method: "post",
+        path: "/storefront/checkout-intents/current/cart/checkout-session",
+      },
+      {
         method: "get",
         path: "/storefront/checkout-intents/current/cart",
       },
@@ -63,7 +67,7 @@ test("every portrait cart route is rate-limited before cart work", async () => {
   }
   assert.deepEqual(
     selections.map(({ action }) => action),
-    ["cartRead", "cartMutate", "cartMutate", "cartMutate", "cartMutate"],
+    ["checkoutSession", "cartRead", "cartMutate", "cartMutate", "cartMutate", "cartMutate"],
   );
   assert.equal(selections.every(({ credential }) => credential), true);
   assert.deepEqual(downstream, []);

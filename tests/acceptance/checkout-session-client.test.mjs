@@ -128,7 +128,7 @@ test("abort is distinct from a customer-visible failure and carries no redirect"
 test("redirect data has one navigation sink and no logging or persistent browser sink", async () => {
   const [client, modal] = await Promise.all([
     read("src/features/checkout/checkoutSessionClient.ts"),
-    read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
+    read("src/features/checkout/components/PortraitCheckoutModal.tsx"),
   ]);
   const joined = `${client}\n${modal}`;
   assert.equal(modal.match(/window\.location\.assign\(result\.checkoutUrl\)/g)?.length, 1);

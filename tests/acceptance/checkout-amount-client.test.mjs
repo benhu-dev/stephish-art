@@ -134,19 +134,16 @@ test("network, authorization, validation, and server failures stay safe and retr
   assert.equal(results.slice(0, 5).some(({ message }) => /private|UNAUTHORIZED|INVALID_AMOUNT|AMOUNT_BELOW_MINIMUM|INTERNAL_ERROR/.test(message)), false);
 });
 
-test("modal wires amount, photo, and secure Checkout clients", async () => {
-  const [modal, photo, review] = await Promise.all([
-    read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
-    read("src/features/checkout/components/CheckoutPhotoStep.tsx"),
-    read("src/features/checkout/components/CheckoutReviewStep.tsx"),
+test("supported modal uses server fixed-price portraits rather than custom amounts", async () => {
+  const [modal, steps] = await Promise.all([
+    read("src/features/checkout/components/PortraitCheckoutModal.tsx"),
+    read("src/features/checkout/components/PortraitSteps.tsx"),
   ]);
-  assert.match(modal, /submitCheckoutAmount/);
-  assert.match(modal, /uploadPhoto/);
-  assert.match(modal, /deletePhoto/);
-  assert.match(modal, /requestCheckoutSession/);
-  assert.match(modal, /Saving your amount…/);
-  assert.match(modal, /requestControllerRef/);
-  assert.doesNotMatch(`${photo}\n${review}`, /fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\//i);
-  assert.match(review, /type=["']button["']/);
-  assert.match(review, /Continue to Secure Checkout/);
+  for (const client of ["startPortraitDraft", "uploadPortraitPhoto", "changePortraitPhoto", "requestPortraitPayment"])
+    assert.equal(modal.includes(client), true);
+  assert.doesNotMatch(modal, /submitCheckoutAmount|customAmount|choosePreset/);
+  assert.match(modal, /active\.current/);
+  assert.match(steps, /Secure checkout/);
+  assert.match(steps, /\$20 includes one person or pet/);
+  assert.doesNotMatch(steps, /fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\//i);
 });

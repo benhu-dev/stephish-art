@@ -11,6 +11,11 @@ test("portrait cart endpoints expose only the intended cookie-authorized routes"
   assert.deepEqual(
     portraitCartEndpoints.map(({ method, path }) => ({ method, path })),
     [
+      { method: "post", path: "/storefront/checkout-intents/portrait-draft" },
+      {
+        method: "get",
+        path: "/storefront/checkout-intents/current/cart/recovery",
+      },
       {
         method: "post",
         path: "/storefront/checkout-intents/current/cart/checkout-session",
@@ -67,9 +72,22 @@ test("every portrait cart route is rate-limited before cart work", async () => {
   }
   assert.deepEqual(
     selections.map(({ action }) => action),
-    ["checkoutSession", "cartRead", "cartMutate", "cartMutate", "cartMutate", "cartMutate"],
+    [
+      "intentCreate",
+      "cartRead",
+      "checkoutSession",
+      "cartRead",
+      "cartMutate",
+      "cartMutate",
+      "cartMutate",
+      "cartMutate",
+    ],
   );
-  assert.equal(selections.every(({ credential }) => credential), true);
+  assert.equal(
+    selections.slice(1).every(({ credential }) => credential),
+    true,
+  );
+  assert.equal(selections[0].credential, false);
   assert.deepEqual(downstream, []);
 });
 
@@ -138,7 +156,10 @@ test("safe cart responses expose presentation data without persistence details",
   });
 
   assert.equal(response.subtotalCents, 2500);
-  assert.equal(response.portraits[0].id, "a9f42c44-5a8b-4c2d-9431-66bd108cf261");
+  assert.equal(
+    response.portraits[0].id,
+    "a9f42c44-5a8b-4c2d-9431-66bd108cf261",
+  );
   assert.deepEqual(response.portraits[0].template.preview, {
     alt: "Blue city frame",
     height: 800,

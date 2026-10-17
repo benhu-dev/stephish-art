@@ -1,9 +1,12 @@
 import type { Endpoint, PayloadRequest } from "payload";
+import { readPortraitRecovery } from "./portraitRecoveryService";
+import { startPortraitDraft } from "./portraitDraftService";
 import { parsePortraitCheckoutRequest } from "./portraitShippingPolicy";
 import { createOrResumeStripeCheckoutSession } from "../storefront/checkoutSessionService";
 
 import {
   clearCheckoutIntentCookie,
+  serializeCheckoutIntentCookie,
   parseCheckoutIntentCookie,
   type CheckoutIntentCredential,
 } from "../storefront/checkoutIntentCookie";
@@ -11,6 +14,7 @@ import { createRateLimitedStorefrontHandler } from "../storefront/storefrontRate
 import { enforceStorefrontRateLimit } from "../storefront/storefrontRateLimit";
 import {
   readStorefrontJson,
+  parseEmptyObjectRequest,
   requireNoQueryString,
   requireSameOrigin,
 } from "../storefront/storefrontRequestSecurity";
@@ -97,6 +101,35 @@ const readCartHandler = async (request: PayloadRequest) => {
       }),
       200,
     );
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
+export const portraitDraftHandler = async (
+  request: PayloadRequest,
+  start = startPortraitDraft,
+) => {
+  try {
+    requireSameOrigin(request);
+    requireNoQueryString(request);
+    parseEmptyObjectRequest(await readStorefrontJson(request));
+    const parsed = parseCheckoutIntentCookie(request.headers.get("cookie"));
+    if (parsed.kind === "malformed") throw unauthorizedIntentError(true);
+    const created = await start(
+      request,
+      parsed.kind === "valid" ? parsed.credential : undefined,
+    );
+    const headers = noStoreHeaders();
+    headers.set(
+      "Set-Cookie",
+      serializeCheckoutIntentCookie(
+        created.credential,
+        new Date(created.intent.expiresAt),
+        isProduction(),
+      ),
+    );
+    return jsonResponse({ status: "draft" }, 201, headers);
   } catch (error) {
     return errorResponse(request, error);
   }
@@ -203,6 +236,25 @@ export const portraitCheckoutHandler = async (
   }
 };
 
+export const portraitRecoveryHandler = async (
+  request: PayloadRequest,
+  readRecovery = readPortraitRecovery,
+) => {
+  try {
+    requireNoQueryString(request);
+    if (request.headers.has("origin")) requireSameOrigin(request);
+    return jsonResponse(
+      await readRecovery({
+        credential: readRequiredCredential(request),
+        request,
+      }),
+      200,
+    );
+  } catch (error) {
+    return errorResponse(request, error);
+  }
+};
+
 const credentialAction =
   (action: "cartMutate" | "cartRead" | "checkoutSession") =>
   (request: PayloadRequest) => {
@@ -216,6 +268,24 @@ const credentialAction =
 export const createPortraitCartEndpoints = (
   enforce: typeof enforceStorefrontRateLimit = enforceStorefrontRateLimit,
 ): Endpoint[] => [
+  {
+    handler: createRateLimitedStorefrontHandler({
+      action: () => ({ action: "intentCreate" }),
+      enforce,
+      handler: portraitDraftHandler,
+    }),
+    method: "post",
+    path: "/storefront/checkout-intents/portrait-draft",
+  },
+  {
+    handler: createRateLimitedStorefrontHandler({
+      action: credentialAction("cartRead"),
+      enforce,
+      handler: portraitRecoveryHandler,
+    }),
+    method: "get",
+    path: "/storefront/checkout-intents/current/cart/recovery",
+  },
   {
     handler: createRateLimitedStorefrontHandler({
       action: credentialAction("checkoutSession"),

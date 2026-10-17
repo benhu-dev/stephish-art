@@ -690,6 +690,10 @@
   display: block;
   margin-top: 12px;
 }
+.portrait-recovery > a {
+  display: inline-block;
+  margin: 8px 12px 0 0;
+}
 .portrait-inline-confirm {
   font:
     12px/1.5 Arial,

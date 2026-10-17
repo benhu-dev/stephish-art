@@ -38,46 +38,38 @@ test("local photo rules accept only one to three bounded raster previews", () =>
   );
 });
 
-test("modal is keyboard accessible while Review owns an accessible secure-checkout state", async () => {
-  const [modal, amount, photo, review] = await Promise.all([
-    read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
-    read("src/features/checkout/components/CheckoutAmountStep.tsx"),
-    read("src/features/checkout/components/CheckoutPhotoStep.tsx"),
-    read("src/features/checkout/components/CheckoutReviewStep.tsx"),
+test("portrait modal is keyboard accessible with confirmed references and secure checkout", async () => {
+  const [modal, steps, preview] = await Promise.all([
+    read("src/features/checkout/components/PortraitCheckoutModal.tsx"),
+    read("src/features/checkout/components/PortraitSteps.tsx"),
+    read("src/features/checkout/components/PortraitPhotoPreview.tsx"),
   ]);
-  const joined = [modal, amount, photo, review].join("\n");
-  for (const text of [
-    "Choose your amount",
-    "Add your photos",
-    "Ready for the press?",
-    "Continue to Secure Checkout",
-  ]) assert.equal(joined.includes(text), true, `missing ${text}`);
-  assert.match(joined, /role=["']dialog["']/);
-  assert.match(joined, /aria-modal=["']true["']/);
-  assert.match(joined, /event\.key === ["']Escape["']/);
-  assert.match(joined, /event\.key === ["']Tab["']/);
-  assert.match(joined, /document\.body\.style\.overflow/);
-  assert.match(joined, /trigger\?\.focus/);
-  assert.match(joined, /URL\.createObjectURL/);
-  assert.match(joined, /URL\.revokeObjectURL/);
-  assert.match(modal, /submitCheckoutAmount/);
-  assert.match(modal, /requestCheckoutSession/);
+  assert.match(modal, /role="dialog"/);
+  assert.match(modal, /aria-modal="true"/);
+  assert.match(modal, /e\.key === "Escape"/);
+  assert.match(modal, /e\.key !== "Tab"/);
+  assert.match(modal, /document\.body\.style\.overflow/);
+  assert.match(modal, /trigger\?\.focus/);
+  assert.match(modal, /el\.inert = true/);
+  assert.match(modal, /el\.inert = priorInert/);
+  assert.match(preview, /URL\.createObjectURL/);
+  assert.match(preview, /URL\.revokeObjectURL/);
+  assert.match(modal, /startPortraitDraft/);
+  assert.match(modal, /requestPortraitPayment/);
   assert.match(modal, /window\.location\.assign\(result\.checkoutUrl\)/);
-  assert.match(modal, /checkoutPending/);
-  assert.match(modal, /requestControllerRef\.current !== controller/);
-  assert.match(review, /type=["']button["']/);
-  assert.match(review, /Continue to Secure Checkout/);
-  assert.match(review, /Opening secure checkout/);
-  assert.match(review, /role=["']alert["']/);
-  assert.equal(/fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|payload\./i.test(`${photo}\n${review}`), false);
+  assert.match(modal, /active\.current !== controller/);
+  assert.match(steps, /disabled=\{!cartReady\(cart\) \|\| !accepted\}/);
+  assert.match(steps, /Secure checkout/);
+  assert.match(modal, /role="alert"/);
+  assert.doesNotMatch(steps, /fetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\/api\/|payload\./i);
 });
 
-test("art direction covers focus, themes, reduced motion, and both mobile orientations", async () => {
-  const styles = await read("src/features/checkout/components/checkout-modal.css");
+test("portrait art direction covers focus, themes, reduced motion, and narrow responsive widths", async () => {
+  const styles = await read("src/features/checkout/components/portrait-checkout.css");
   assert.match(styles, /:focus-visible/);
   assert.match(styles, /data-theme=["']night["']/);
   assert.match(styles, /prefers-reduced-motion:\s*reduce/);
-  assert.match(styles, /orientation:\s*landscape/);
-  assert.match(styles, /max-width:\s*600px/);
+  assert.match(styles, /max-width:\s*760px/);
+  assert.match(styles, /max-width:\s*370px/);
   assert.match(styles, /paper/);
 });

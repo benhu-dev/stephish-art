@@ -51,6 +51,48 @@ const uploadLimits = {
 let portraits = [];
 let intent = mode === "legacy" || mode === "payment";
 let nextPhoto = 1;
+let paymentStatus = mode === "payment" ? "checkout_created" : "draft";
+let paymentRegion = "us";
+if (mode === "ready") {
+  intent = true;
+  portraits = catalog.slice(0, 2).map((t, index) => {
+    const subjectId = randomUUID(),
+      portraitId = randomUUID(),
+      photoId = nextPhoto++;
+    return {
+      id: portraitId,
+      position: index + 1,
+      amountCents: 2000,
+      artistNote: `Synthetic note ${index + 1}`,
+      subjects: [
+        {
+          id: subjectId,
+          name: `Synthetic friend ${index + 1}`,
+          kind: "person",
+          position: 1,
+        },
+      ],
+      template: { ...t, available: true },
+      photos: [
+        {
+          id: photoId,
+          position: 1,
+          height: 160,
+          width: 120,
+          sizeBytes: image.length,
+          mimeType: "image/png",
+          subjectIds: [subjectId],
+          previewUrl: `/api/storefront/checkout-intents/current/cart/portraits/${portraitId}/uploads/${photoId}/preview`,
+        },
+      ],
+      photoState: {
+        complete: true,
+        coveredSubjectIds: [subjectId],
+        totalBytes: image.length,
+      },
+    };
+  });
+}
 const cart = () => ({
   limits,
   portraits,
@@ -111,6 +153,41 @@ const server = createServer(async (req, res) => {
       return;
     }
     const root = "/api/storefront/checkout-intents";
+    if (path === `${root}/current/cart/recovery`) {
+      if (!intent) {
+        json({ error: { code: "INTENT_UNAVAILABLE" } }, 401);
+        return;
+      }
+      const portrait = portraits.length > 0 || mode === "payment";
+      json({
+        status: paymentStatus,
+        checkoutKind: portrait ? "portrait" : "legacy",
+        shippingRegion: paymentStatus === "draft" ? null : paymentRegion,
+        totalAmountCents:
+          paymentStatus === "draft"
+            ? null
+            : cart().subtotalCents + (paymentRegion === "us" ? 1000 : 500),
+      });
+      return;
+    }
+    if (path === `${root}/portrait-draft` && req.method === "POST") {
+      intent = true;
+      json({ status: "draft" }, 201);
+      return;
+    }
+    if (
+      path === `${root}/current/cart/checkout-session` ||
+      path === `${root}/current/checkout-session`
+    ) {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks));
+      paymentRegion = body.shippingRegion ?? paymentRegion;
+      paymentStatus = "checkout_pending";
+      // Deliberate uncertainty, never return/visit a real provider URL from browser checks.
+      json({ error: { code: "CHECKOUT_UNAVAILABLE" } }, 503);
+      return;
+    }
     if (path === `${root}/current` && req.method === "GET") {
       if (!intent) {
         json({ error: { code: "INTENT_UNAVAILABLE" } }, 401);
@@ -147,6 +224,7 @@ const server = createServer(async (req, res) => {
     if (path === `${root}/current/abandon`) {
       intent = false;
       portraits = [];
+      paymentStatus = "draft";
       res.writeHead(204);
       res.end();
       return;

@@ -4,8 +4,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { deletePhoto, readCurrentPhotos, uploadPhoto } from "../../src/features/checkout/checkoutPhotoClient.ts";
-import { CheckoutPhotoStep } from "../../src/features/checkout/components/CheckoutPhotoStep.tsx";
-import { CheckoutReviewStep } from "../../src/features/checkout/components/CheckoutReviewStep.tsx";
 
 const uploads = (positions) => positions.map((position) => ({
   id: position + 100,
@@ -86,58 +84,23 @@ test("ambiguous replies require reconciliation and malformed success data stays 
   }
 });
 
-test("server previews keep artistic loading and failure fallbacks without internal metadata", () => {
-  const entry = { position: 3, server: uploads([3])[0], status: "confirmed" };
-  const markup = renderToStaticMarkup(createElement(CheckoutPhotoStep, {
-    error: null,
-    inputRef: { current: null },
-    limits: state().limits,
-    note: "",
-    onChoose() {},
-    onDrop() {},
-    onOpenPicker() {},
-    onRemove() {},
-    onRetryPreview() {},
-    pending: false,
-    photos: [entry],
-    setNote() {},
+test("portrait previews retain private loading, failure, retry and blob cleanup behavior", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { PortraitPhotoPreview } = await import("../../src/features/checkout/components/PortraitPhotoPreview.tsx");
+  const source = await readFile(new URL("../../src/features/checkout/components/PortraitPhotoPreview.tsx", import.meta.url), "utf8");
+  const html = renderToStaticMarkup(createElement(PortraitPhotoPreview, {
+    photo: { id: 103, mimeType: "image/png", sizeBytes: 68, previewUrl: "/private", subjectIds: ["subject"] },
+    names: "Synthetic friend",
   }));
-  const review = renderToStaticMarkup(createElement(CheckoutReviewStep, {
-    amountCents: 900,
-    onFinish() {},
-    onRetryPreview() {},
-    photos: [entry],
-  }));
-  for (const html of [markup, review]) {
-    assert.match(html, /Photo 3/);
-    assert.match(html, /PNG/);
-    assert.doesNotMatch(html, /103|bucket|storage|token|signed|intentId|https?:\/\//i);
-  }
-
-  const failed = { ...entry, serverPreview: { status: "failed" } };
-  const failedMarkup = renderToStaticMarkup(createElement(CheckoutPhotoStep, {
-    error: null,
-    inputRef: { current: null },
-    limits: state().limits,
-    note: "",
-    onChoose() {},
-    onDrop() {},
-    onOpenPicker() {},
-    onRemove() {},
-    onRetryPreview() {},
-    pending: false,
-    photos: [failed],
-    setNote() {},
-  }));
-  assert.match(failedMarkup, /Retry preview/);
-  assert.match(failedMarkup, /Photo 3 uploaded/);
-
-  const ready = { ...entry, serverPreview: { previewUrl: "blob:safe-preview", status: "ready" } };
-  const readyReview = renderToStaticMarkup(createElement(CheckoutReviewStep, {
-    amountCents: 900,
-    onFinish() {},
-    onRetryPreview() {},
-    photos: [ready],
-  }));
-  assert.match(readyReview, /blob:safe-preview/);
+  assert.match(html, /Loading private photo/);
+  assert.doesNotMatch(html, /103|bucket|storage|token|signed|intentId|https?:\/\//i);
+  assert.match(source, /Preview unavailable/);
+  assert.match(source, /Retry preview/);
+  assert.match(source, /blob\.size !== photo\.sizeBytes/);
+  assert.match(source, /blob\.type !== photo\.mimeType/);
+  assert.match(source, /URL\.createObjectURL/);
+  assert.match(source, /URL\.revokeObjectURL/);
+  assert.match(source, /controller\.abort\(\)/);
+  assert.match(source, /cache: "no-store"/);
+  assert.match(source, /credentials: "same-origin"/);
 });

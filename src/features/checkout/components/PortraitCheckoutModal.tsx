@@ -9,8 +9,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { submitCheckoutAmount } from "../checkoutIntentClient";
 import { abandonCurrentCheckout } from "../checkoutRecoveryClient";
+import { requestCheckoutSession } from "../checkoutSessionClient";
+import {
+  readPortraitRecovery,
+  requestPortraitPayment,
+  type PortraitRecovery,
+} from "../portraitPaymentClient";
 import {
   cartReady,
   changePortraitPhoto,
@@ -20,6 +25,7 @@ import {
   readTemplateCatalog,
   removePortrait,
   savePortrait,
+  startPortraitDraft,
   uploadPortraitPhoto,
   validateNewPhoto,
   type CartPortrait,
@@ -86,6 +92,7 @@ export function PortraitCheckoutModal({
   const [removeTarget, setRemoveTarget] = useState<CartPortrait | null>(null);
   const [region, setRegion] = useState<"us" | "international">("us");
   const [accepted, setAccepted] = useState(false);
+  const [recovery, setRecovery] = useState<PortraitRecovery | null>(null);
   const portrait = cart?.portraits.find((p) => p.id === portraitId);
   const selectedTemplate =
     catalog.find((t) => t.id === templateId) ?? portrait?.template;
@@ -109,6 +116,7 @@ export function PortraitCheckoutModal({
     setRemoveTarget(null);
     setAccepted(false);
     setRegion("us");
+    setRecovery(null);
   }, []);
 
   const hydrate = useCallback(async () => {
@@ -124,15 +132,23 @@ export function PortraitCheckoutModal({
     try {
       const [templates, intent] = await Promise.all([
         readTemplateCatalog({ signal: controller.signal }),
-        readPreviewIntent({ signal: controller.signal }),
+        readPortraitRecovery({ signal: controller.signal }),
       ]);
       if (active.current !== controller) return;
-      if (templates.kind !== "ready") {
+      if (
+        templates.kind !== "ready" &&
+        !(
+          intent.kind === "ready" &&
+          ["checkout_pending", "checkout_created", "completed"].includes(
+            intent.value.status,
+          )
+        )
+      ) {
         setError(templates.message);
         setReloadRequired(true);
         return;
       }
-      setCatalog(templates.value);
+      setCatalog(templates.kind === "ready" ? templates.value : []);
       if (
         intent.kind === "fresh" ||
         (intent.kind === "ready" && intent.value.status === "expired")
@@ -146,10 +162,15 @@ export function PortraitCheckoutModal({
         return;
       }
       if (intent.value.status !== "draft") {
+        setCart(null);
+        setTemplateId(null);
+        setRecovery(intent.value);
+        if (intent.value.shippingRegion) setRegion(intent.value.shippingRegion);
         setBlocked("payment");
         return;
       }
       const result = await readCart({ signal: controller.signal });
+      setRecovery(null);
       if (active.current !== controller) return;
       if (result.kind === "fresh") {
         fresh();
@@ -166,6 +187,7 @@ export function PortraitCheckoutModal({
         return;
       }
       setBlocked(null);
+      setRecovery(null);
       setStep("cart");
       setAccepted(false);
     } finally {
@@ -300,7 +322,7 @@ export function PortraitCheckoutModal({
     await perform(
       async (signal) => {
         if (!cart) {
-          // Re-check before the legacy bootstrap; never reset an existing cart's amount.
+          // Re-check before creating a draft; never overwrite an existing checkout.
           const current = await readPreviewIntent({ signal });
           if (current.kind !== "fresh")
             return {
@@ -308,8 +330,8 @@ export function PortraitCheckoutModal({
               message:
                 "A checkout already exists in this browser. Reload before continuing.",
             };
-          const intent = await submitCheckoutAmount(2000, { signal });
-          if (!intent.ok) return { kind: "uncertain", message: intent.message };
+          const intent = await startPortraitDraft({ signal });
+          if (intent.kind !== "ready") return intent;
         }
         return savePortrait(
           { artistNote: note, subjects, templateId },
@@ -406,7 +428,7 @@ export function PortraitCheckoutModal({
     );
   };
   const abandon = async () => {
-    if (active.current || blocked === "payment") return;
+    if (active.current || recovery?.status === "completed") return;
     const controller = new AbortController();
     active.current = controller;
     setBusy(true);
@@ -421,6 +443,42 @@ export function PortraitCheckoutModal({
         setError(
           "We couldn't start over. Reload the current draft before continuing.",
         );
+        setReloadRequired(true);
+      }
+    } finally {
+      if (active.current === controller) {
+        active.current = null;
+        setBusy(false);
+      }
+    }
+  };
+
+  const pay = async (resume = false) => {
+    if (active.current || reloadRequired) return;
+    if (!resume && (!cart || !cartReady(cart) || !accepted)) return;
+    const controller = new AbortController();
+    active.current = controller;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = resume
+        ? await requestCheckoutSession({ signal: controller.signal })
+        : await requestPortraitPayment(region, { signal: controller.signal });
+      if (active.current !== controller || result.kind === "aborted") return;
+      if (result.kind === "ready") {
+        window.location.assign(result.checkoutUrl);
+        return;
+      }
+      if (result.kind === "fresh") {
+        fresh();
+        setError("This checkout has expired. Please start a new portrait.");
+      } else {
+        setError(
+          result.kind === "failed"
+            ? result.message
+            : "Your payment state changed. Reload to continue safely.",
+        );
+        // The server may have reserved or created a Session, even on network/5xx failure.
         setReloadRequired(true);
       }
     } finally {
@@ -458,7 +516,7 @@ export function PortraitCheckoutModal({
           <button
             className="portrait-close"
             type="button"
-            aria-label="Close portrait preview"
+            aria-label="Close portrait checkout"
             onClick={onClose}
           >
             ×
@@ -485,13 +543,19 @@ export function PortraitCheckoutModal({
               />
             )}
             <div className="portrait-sidebar-total">
-              <span>{cart?.portraits.length ?? 0} / 5 portraits</span>
+              <span>
+                {blocked === "payment"
+                  ? recovery?.status === "completed"
+                    ? "Payment confirmed"
+                    : "Payment reserved"
+                  : `${cart?.portraits.length ?? 0} / 5 portraits`}
+              </span>
               {cart && <strong>{money(cart.subtotalCents)}</strong>}
             </div>
             <small id="portrait-preview-notice">
-              Development preview
+              Private references.
               <br />
-              Payment is not available yet.
+              Secure card checkout.
             </small>
           </aside>
           <div className="portrait-content">
@@ -549,21 +613,61 @@ export function PortraitCheckoutModal({
               <div className="portrait-recovery">
                 <p>
                   {blocked === "payment"
-                    ? "A checkout has already moved to payment. Return to the existing checkout to continue safely."
-                    : "An unfinished checkout is already saved in this browser. You can return to it, or confirm that you'd like to start a new portrait draft."}
+                    ? recovery?.status === "completed"
+                      ? "Your payment is confirmed. View your order status below."
+                      : "A checkout has already moved to payment. Resume the reserved checkout below; its portrait details cannot be edited."
+                    : "An older unfinished draft is saved in this browser. Its purchase flow has been retired. Confirm below to start a new portrait draft; nothing is discarded without your confirmation."}
                 </p>
                 <Link className="portrait-secondary" href="/">
                   Return to Photo Booth
                 </Link>
-                {blocked === "legacy" && (
+                {blocked === "payment" && recovery?.status === "completed" ? (
+                  <Link className="portrait-primary" href="/checkout/success">
+                    View order status
+                  </Link>
+                ) : (
+                  blocked === "payment" && (
+                    <button
+                      className="portrait-primary"
+                      type="button"
+                      disabled={busy || reloadRequired || startOver}
+                      onClick={() => {
+                        void pay(true);
+                      }}
+                    >
+                      Resume secure checkout →
+                    </button>
+                  )
+                )}
+                {recovery?.totalAmountCents != null && (
+                  <p>
+                    Reserved total: {money(recovery.totalAmountCents)} ·{" "}
+                    {recovery.shippingRegion === "us"
+                      ? "US tracked shipping"
+                      : "International untracked shipping"}
+                  </p>
+                )}
+                {blocked === "payment" && recovery?.status !== "completed" && (
                   <button
                     type="button"
                     className="portrait-text-button"
-                    disabled={busy || reloadRequired}
+                    disabled={busy || reloadRequired || startOver}
                     onClick={() => setStartOver(true)}
                   >
                     Start a new draft
                   </button>
+                )}
+                {blocked === "legacy" && (
+                  <>
+                    <button
+                      type="button"
+                      className="portrait-text-button"
+                      disabled={busy || reloadRequired}
+                      onClick={() => setStartOver(true)}
+                    >
+                      Start a new draft
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -656,6 +760,9 @@ export function PortraitCheckoutModal({
                     setRegion={setRegion}
                     accepted={accepted}
                     setAccepted={setAccepted}
+                    pay={() => {
+                      void pay();
+                    }}
                   />
                 )}
                 <footer className="portrait-actions" hidden={step === "photos"}>
@@ -792,7 +899,7 @@ export function PortraitCheckoutModal({
             )}
             {busy && (
               <p className="portrait-saving" role="status">
-                Saving your draft…
+                Saving or opening secure checkout…
               </p>
             )}
           </div>

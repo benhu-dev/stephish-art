@@ -34,14 +34,14 @@ test("homepage composes the Photo Booth story before the existing park scene", a
   assert.doesNotMatch(home, /onCanPlay/);
 });
 
-test("homepage owns one unchanged checkout modal shared by both purchase entry points", async () => {
+test("homepage owns only the portrait checkout shared by both purchase entry points", async () => {
   const [home, scene, narrative] = await Promise.all([
     read("src/features/photo-booth/components/PhotoBoothHome.tsx"),
     read("src/features/postcard-machine/components/PostcardScene.tsx"),
     read("src/features/postcard-machine/components/ScrollNarrative.tsx"),
   ]);
 
-  assert.equal(home.match(/<ArtisticCheckoutModal/g)?.length, 1);
+  assert.equal(home.match(/<PortraitCheckoutModal/g)?.length, 1);
   assert.match(home, /checkoutTriggerRef\.current = trigger/);
   assert.match(home, /<PostcardScene onOpenCheckout={openCheckout} theme={theme}/);
   assert.match(scene, /<ScrollNarrative onOpenCheckout={onOpenCheckout}/);

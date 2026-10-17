@@ -98,20 +98,20 @@ test("artist note endpoint and browser client use the exact private no-store con
   ]]);
 });
 
-test("modal persists, restores, clears, and reviews the server-confirmed note as React text", async () => {
-  const [client, modal, photo, review, stripe] = await Promise.all([
-    read("src/features/checkout/checkoutIntentClient.ts"),
-    read("src/features/checkout/components/ArtisticCheckoutModal.tsx"),
-    read("src/features/checkout/components/CheckoutPhotoStep.tsx"),
-    read("src/features/checkout/components/CheckoutReviewStep.tsx"),
+test("portrait modal saves each confirmed note and reviews it as React text", async () => {
+  const [client, modal, steps, stripe] = await Promise.all([
+    read("src/features/checkout/portraitCartClient.ts"),
+    read("src/features/checkout/components/PortraitCheckoutModal.tsx"),
+    read("src/features/checkout/components/PortraitSteps.tsx"),
     read("src/server/stripe/stripeCheckoutGateway.ts"),
   ]);
-  assert.match(modal, /saveCheckoutArtistNote/);
-  assert.match(modal, /confirmedNote/);
-  assert.match(modal, /result\.value\.artistNote/);
-  assert.match(photo, /maxLength=\{MAX_ARTIST_NOTE_CHARACTERS\}/);
-  assert.match(review, /artistNote/);
-  assert.doesNotMatch(review, /dangerouslySetInnerHTML|markdown/i);
+  assert.match(modal, /savePortrait/);
+  assert.match(modal, /artistNote: note/);
+  assert.match(modal, /setNote\(p\.artistNote\)/);
+  assert.match(modal, /setNote\(""\)/);
+  assert.match(steps, /maxLength=\{1000\}/);
+  assert.match(steps, /\{p\.artistNote\}/);
+  assert.doesNotMatch(steps, /dangerouslySetInnerHTML|markdown/i);
   assert.doesNotMatch(`${client}\n${modal}`, /localStorage|sessionStorage|document\.cookie/);
   assert.doesNotMatch(stripe, /artistNote|artist_note/);
 });

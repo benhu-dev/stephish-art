@@ -46,3 +46,5 @@ Reserved and paid previews cannot be replaced/deleted; upload a new preview and 
 - NOT RUN / not required for this backend-only Unit: visual/browser acceptance. No UI changed.
 
 The in-memory transaction harness is service-level evidence, not proof of PostgreSQL behavior. After explicit approval for live lifecycle checks, use uniquely identifiable synthetic fixtures with baseline/final database and Storage counts. Do not use customer photographs or send real email. Full customer/artist acceptance and public rollout remain Unit 3.6.2.
+
+Follow-up on 2026-10-12: authorized Unit 3.6.2 fixtures passed real PostgreSQL/private Storage concurrency, signed synthetic fulfillment/replay, rollback and private artist HTTP checks, plus actual Stripe Sandbox Session creation/resume/expiration. All baseline counts and Storage objects were restored, and no email was sent. Paid provider retrieval was injected for synthetic signed events; an actual Hosted Checkout payment remains untested. See `unit-3-6-2-acceptance.md` for the precise execution record and remaining manual acceptance.

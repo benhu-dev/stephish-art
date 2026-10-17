@@ -1,4 +1,5 @@
 import type { PayloadRequest } from "payload";
+import { readPaidPortraitWorkbench } from "./paidPortraitWorkbench";
 
 import { formatNewYorkBusinessDateTime } from "../../lib/newYorkTime";
 import {
@@ -24,7 +25,8 @@ const relationId = (value: unknown) => {
       ? (value as { id?: unknown }).id
       : value;
   const id = Number(candidate);
-  if (!Number.isSafeInteger(id) || id <= 0) throw new Error("ORDER_UNAVAILABLE");
+  if (!Number.isSafeInteger(id) || id <= 0)
+    throw new Error("ORDER_UNAVAILABLE");
   return id;
 };
 
@@ -42,10 +44,7 @@ const optionalString = (value: unknown) =>
 
 const cents = (value: unknown, allowZero = false) => {
   const amount = Number(value);
-  if (
-    !Number.isSafeInteger(amount) ||
-    amount < (allowZero ? 0 : 1)
-  ) {
+  if (!Number.isSafeInteger(amount) || amount < (allowZero ? 0 : 1)) {
     throw new Error("ORDER_UNAVAILABLE");
   }
   return amount;
@@ -80,6 +79,7 @@ export const readOrderWorkbench = async ({
     req: request,
     select: {
       amountCents: true,
+      portraitPaymentFacts: true,
       artistNote: true,
       checkoutIntent: true,
       contactEmail: true,
@@ -125,11 +125,18 @@ export const readOrderWorkbench = async ({
     request.payload.find({
       collection: "order-uploads",
       depth: 0,
-      limit: 3,
+      limit: 16,
       overrideAccess: false,
       pagination: false,
       req: request,
-      select: { id: true, mimeType: true, position: true },
+      select: {
+        id: true,
+        mimeType: true,
+        position: true,
+        orderPortrait: true,
+        subjectIds: true,
+        filesize: true,
+      },
       sort: "position",
       where: { order: { equals: orderId } },
     }),
@@ -156,7 +163,8 @@ export const readOrderWorkbench = async ({
   }
 
   const address = order.shippingAddress;
-  if (!address || typeof address !== "object") throw new Error("ORDER_UNAVAILABLE");
+  if (!address || typeof address !== "object")
+    throw new Error("ORDER_UNAVAILABLE");
 
   const uploads = uploadResult.docs.map((upload) => {
     const id = relationId(upload.id);
@@ -171,10 +179,53 @@ export const readOrderWorkbench = async ({
     ) {
       throw new Error("ORDER_UNAVAILABLE");
     }
-    return { id, mimeType, position } as OrderWorkbenchUpload;
+    return {
+      id,
+      mimeType,
+      position,
+      ...(order.portraitPaymentFacts != null
+        ? {
+            orderPortraitId: relationId(upload.orderPortrait),
+            subjectIds: upload.subjectIds as string[],
+            sizeBytes: Number(upload.filesize),
+          }
+        : {}),
+    } as OrderWorkbenchUpload;
   });
 
+  if (uploads.length > (order.portraitPaymentFacts != null ? 15 : 3))
+    throw new Error("ORDER_UNAVAILABLE");
+  const portraits =
+    order.portraitPaymentFacts != null
+      ? await readPaidPortraitWorkbench(request, orderId, uploads, subtotal)
+      : undefined;
+  const facts = order.portraitPaymentFacts as {
+    shipping?: { region?: string; amountCents?: number };
+    subtotalCents?: number;
+    totalCents?: number;
+    portraitCount?: number;
+  } | null;
+  if (
+    portraits &&
+    (!facts ||
+      facts.subtotalCents !== subtotal ||
+      facts.totalCents !== total ||
+      facts.shipping?.amountCents !== shipping ||
+      !["us", "international"].includes(facts.shipping?.region ?? "") ||
+      facts.portraitCount !== portraits.length)
+  )
+    throw new Error("ORDER_UNAVAILABLE");
+
   return {
+    ...(portraits
+      ? {
+          portraits,
+          shippingClass:
+            facts!.shipping!.region === "us"
+              ? ("US tracked" as const)
+              : ("International untracked" as const),
+        }
+      : {}),
     amounts: {
       shipping: usd(shipping),
       subtotal: usd(subtotal),

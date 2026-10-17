@@ -107,6 +107,14 @@
   padding: 0;
 }
 
+.templatePreview {
+  display: block;
+  max-width: min(240px, 100%);
+  max-height: 320px;
+  object-fit: contain;
+  margin: 1rem 0;
+}
+
 .imageCard {
   display: grid;
   gap: 0.5rem;

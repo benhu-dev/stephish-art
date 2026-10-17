@@ -371,6 +371,20 @@ export const readTemplateCatalog = (options?: Options) =>
   );
 export const readCart = (options?: Options) =>
   request(CART, { method: "GET" }, parsePortraitCart, options);
+export const startPortraitDraft = (options?: Options) =>
+  request(
+    "/api/storefront/checkout-intents/portrait-draft",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    },
+    (v) =>
+      record(v) && keys(v, ["status"]) && v.status === "draft"
+        ? ("draft" as const)
+        : null,
+    options,
+  );
 export const savePortrait = (
   input: PortraitInput,
   id?: string,

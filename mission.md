@@ -1,47 +1,44 @@
-# Phase 3 - Unit 3.6.1: Multi-Portrait Payment Core
+# Phase 3 - Unit 3.6.2: Checkout Rollout and Minimum Artist Workbench
 
 ## Outcome
 
-Create server-authoritative multi-portrait Stripe Checkout Sessions and fulfill their immutable paid Order graph. Preserve the homepage checkout and disabled development preview until Unit 3.6.2 adds the minimum artist workbench and switches public entry points.
+Connect the accepted portrait modal to payment, add safe cancellation/recovery and complete authenticated per-portrait artist visibility. Prepare the homepage switch behind a default-off server rollout gate; enable it only after explicitly authorized live lifecycle and user acceptance.
 
 ## Confirmed decisions
 
-- One to five portraits with server-calculated USD prices and complete private photo coverage of one to three named people/pets per portrait.
-- Shipping once per Order: US tracked 1000 cents; international untracked 500 cents.
-- The selected shipping region restricts Stripe address countries. US addresses cannot use international pricing.
-- Provisionally allow explicitly enumerated Stripe-supported international destinations, excluding unknown placeholder codes. Final destinations remain a release decision, not a postal deliverability guarantee.
-- Preserve card-only Sandbox payments, cookie authority, idempotency, verified webhooks and refund/dispute behavior.
-- Freeze template/subject/note/photo and shipping/policy facts before provider work. Uncertain retries use stored snapshots, not mutable catalog data.
-- Require and record policy acceptance with a server timestamp and version. Do not promise a production deadline.
+- Preserve Unit 3.6.1 prices, once-per-order US/international shipping, frozen payment snapshots, cookie authority, card-only Sandbox payments and verified webhooks.
+- Recover drafts without querying Stripe on modal open. An active payment attempt may be resumed, not edited; start-over must expire it safely.
+- Legacy drafts/payments remain recoverable during transition. Never overwrite a legacy or portrait draft without explicit confirmation.
+- Uncertain payment requests require state read-back before another action; no automatic payment mutation retries.
+- Every paid portrait must show its immutable design, subjects, mapped private references, note and price in the artist workbench.
+- Preserve fulfillment, tracking, refund/dispute restrictions and legacy Order visibility. Do not invent production deadlines.
+- Homepage rollout is gated by server-only PHOTO_BOOTH_PORTRAIT_CHECKOUT_ENABLED, default false. Never edit .env.local or enable production deployment here.
+- Development preview remains available only in development; it can exercise the connected flow when the same rollout gate is explicitly enabled.
 
 ## Scope
 
-- Narrow same-origin, cookie-authorized, rate-limited portrait payment endpoint.
-- Transactional reservation, frozen snapshot validation and provider work only after commit.
-- Multiple Stripe line items, one fixed shipping option and region-restricted address collection.
-- Webhook country/amount/ownership/coverage checks; transactional paid portrait creation, upload association and replay/rollback protection.
-- Additive forward migration, generated schema/types and preservation of reserved template previews.
-- Focused mocked tests, TypeScript, changed-file lint and production build; operational documentation and project status.
+Narrow read-only cookie-authorized recovery contract; browser payment/recovery states and clear totals/policy; default-off homepage switch; authenticated paid-template preview and grouped artist reference presentation; focused tests, local mocked browser checks, TypeScript, changed-file ESLint, production build and acceptance documentation.
 
 ## Out of scope
 
-Public checkout replacement, preview payment button, artist workbench/email presentation expansion, new payment providers, postage rating, production launch, final destination/policy approvals and production assets.
+New schemas/migrations, provider/deployment changes, live payment/Storage/Resend fixtures without separate approval, production launch, broad email redesign, final destination/policy approvals, deadlines, navigation/brand expansion and unrelated visual changes.
 
 ## Acceptance
 
-1. Legacy checkout remains operational and cannot begin a new payment for a portrait cart.
-2. Reject incomplete/malformed/mixed carts, unavailable templates and missing policy acceptance before provider work.
-3. Server-owned prices, countries and shipping remain fixed across uncertain retries with the original attempt.
-4. Reservation blocks draft mutation and changed shipping-region retries.
-5. Fulfillment verifies frozen country/region and amounts, creating every portrait and associating its uploads with one Order.
-6. Replay/concurrency and rollback do not duplicate or partially persist the paid graph, ledger or email jobs.
-7. Catalog edits do not change reserved/paid snapshot text or replace/delete reserved preview media.
-8. No credentials, private image URLs, subject names or notes enter Stripe metadata or public CRUD.
+1. Default gate preserves legacy homepage checkout; enabled gate opens the portrait flow at every existing purchase trigger.
+2. Complete carts with accepted policy can request server-priced Checkout; incomplete carts cannot. Shipping is shown once and Stripe confirms the authoritative total.
+3. Refresh/reopen differentiates fresh, portrait/legacy draft, pending/created payment, completed and expired states; active attempts are never editable.
+4. Retry after uncertain payment first reads current state. Resume uses frozen payment facts; abandon confirmation uses existing safe expiration and preserves paid work.
+5. Artist sees up to five paid portraits and fifteen references grouped by portrait, including group-photo subject names, independent notes, immutable template preview and price.
+6. Private template/reference bytes require artist authentication and ownership checks, bypass public image optimization and remain no-store.
+7. Legacy orders, old payment recovery and fulfillment restrictions remain intact.
+8. Desktop/mobile/day/night/keyboard/reduced-motion review has no material defects.
+9. Actual PostgreSQL/Storage/Stripe Sandbox lifecycle plus user acceptance must pass before enabling homepage rollout; report NOT RUN until separately authorized.
 
 ## Verification and provider authorization
 
-Local edits, generated schema/type artifacts, focused mocked tests, TypeScript, ESLint and a production build are authorized. Migration apply and synthetic live database/Storage/Stripe/Resend fixtures need separate approval. No real payment/email, deployment or Git mutation. Preserve user-owned processes.
+Local edits, focused mocked tests, TypeScript, lint, build and isolated local browser fixtures are authorized. Do not mutate live database/Storage/Stripe/Resend, send payment/email, change environment values, deploy or perform Git writes. Read-only provider checks only when necessary; live acceptance needs explicit separate approval. Preserve user-owned processes and stop task-created servers/tabs.
 
 ## Stop conditions
 
-Ask before destructive schema/backfills, new dependencies, retention changes or expanding into the public rollout. A pending migration means new payment behavior is not operational yet; report that explicitly. Stop task-created processes and do not stage, commit or push.
+Ask before schema/dependency/retention/payment-policy changes or live-provider fixtures. Do not enable rollout while required real lifecycle/user acceptance is outstanding. Report the gate and remaining acceptance clearly.

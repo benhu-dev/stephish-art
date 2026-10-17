@@ -33,8 +33,7 @@ export function PortraitCheckoutPreview() {
         </button>
         <Link href="/">Return to Photo Booth</Link>
         <small>
-          Payment is disabled in this preview. Only saved changes survive a
-          refresh.
+          Connected Sandbox checkout. Use test cards only.
         </small>
       </main>
       <PortraitCheckoutModal

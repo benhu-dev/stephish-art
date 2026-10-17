@@ -460,6 +460,7 @@ export function CartStep({
   setRegion,
   accepted,
   setAccepted,
+  pay,
 }: {
   cart: PortraitCart;
   edit: (p: CartPortrait) => void;
@@ -468,6 +469,7 @@ export function CartStep({
   setRegion: (r: "us" | "international") => void;
   accepted: boolean;
   setAccepted: (v: boolean) => void;
+  pay: () => void;
 }) {
   return (
     <>
@@ -538,13 +540,22 @@ export function CartStep({
           <dd>{money(cart.subtotalCents)}</dd>
         </div>
         <div>
-          <dt>Estimated shipping · once per order</dt>
+          <dt>
+            Shipping · once per order
+          </dt>
           <dd>{money(region === "us" ? 1000 : 500)}</dd>
         </div>
+          <div>
+            <dt>Total</dt>
+            <dd>
+              <strong>
+                {money(cart.subtotalCents + (region === "us" ? 1000 : 500))}
+              </strong>
+            </dd>
+          </div>
       </dl>
       <p className="portrait-muted">
-        Shipping is a preview estimate. Your destination and final total will be
-        confirmed at checkout.
+        Shipping is charged once for all portraits. Stripe confirms your destination and server-calculated total before payment.
       </p>
       <details className="portrait-policy">
         <summary>Made just for you · final-sale policy</summary>
@@ -580,12 +591,13 @@ export function CartStep({
       <button
         className="portrait-primary portrait-payment"
         type="button"
-        disabled
+        disabled={!cartReady(cart) || !accepted}
+        onClick={pay}
       >
-        Payment opens after checkout integration
+        Secure checkout →
       </button>
       <p className="portrait-muted">
-        Development preview · No payment will be taken.
+        Your portrait details are locked when checkout opens. Card details are handled by Stripe.
       </p>
     </>
   );

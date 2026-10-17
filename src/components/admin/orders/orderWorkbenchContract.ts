@@ -4,12 +4,30 @@ import type {
 } from "../../../server/orders/orderFulfillmentContract";
 
 export type OrderWorkbenchUpload = {
+  orderPortraitId?: number | null;
+  subjectIds?: string[];
+  sizeBytes?: number;
   id: number;
   mimeType: "image/jpeg" | "image/png" | "image/webp";
   position: number;
 };
 
+export type OrderWorkbenchPortrait = {
+  id: number;
+  position: number;
+  templateName: string;
+  templateDescription: string | null;
+  templatePreviewAlt: string;
+  templatePreviewUrl: string;
+  subjects: { id: string; name: string; kind: "person" | "pet" }[];
+  artistNote: string | null;
+  amount: string;
+  uploads: OrderWorkbenchUpload[];
+};
+
 export type OrderWorkbenchData = {
+  portraits?: OrderWorkbenchPortrait[];
+  shippingClass?: "US tracked" | "International untracked";
   amounts: {
     shipping: string;
     subtotal: string;
@@ -66,7 +84,10 @@ export const fulfillmentActionFor = (state: FulfillmentState) => actions[state];
 export const fulfillmentWarningFor = ({
   refundState,
   stripeDisputeStatus,
-}: Pick<OrderWorkbenchData["fulfillment"], "refundState" | "stripeDisputeStatus">) => {
+}: Pick<
+  OrderWorkbenchData["fulfillment"],
+  "refundState" | "stripeDisputeStatus"
+>) => {
   if (refundState === "full") {
     return "Fulfillment is blocked because this order has been fully refunded.";
   }

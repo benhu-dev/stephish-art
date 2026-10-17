@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArtisticCheckoutModal } from "../../checkout/components/ArtisticCheckoutModal";
+import { PortraitCheckoutModal } from "../../checkout/components/PortraitCheckoutModal";
 import { PostcardScene } from "../../postcard-machine/components/PostcardScene";
 import { useSceneTheme } from "../../postcard-machine/hooks/useSceneTheme";
 import { usePhotoBoothMotion } from "../hooks/usePhotoBoothMotion";
@@ -174,7 +174,7 @@ export function PhotoBoothHome() {
 
       <PostcardScene onOpenCheckout={openCheckout} theme={theme} />
 
-      <ArtisticCheckoutModal
+      <PortraitCheckoutModal
         onClose={closeCheckout}
         open={checkoutOpen}
         theme={theme}

@@ -36,9 +36,13 @@ const finalizeExpiredIntent = async ({
   let transaction: StorefrontTransaction | undefined;
   try {
     transaction = await beginStorefrontTransaction(request);
-    const intent = await lockAndAuthorizeCheckoutIntent(transaction, credential, {
-      allowExpired: true,
-    });
+    const intent = await lockAndAuthorizeCheckoutIntent(
+      transaction,
+      credential,
+      {
+        allowExpired: true,
+      },
+    );
     if (intent.status === "completed") {
       throw new StorefrontApiError(409, "CHECKOUT_PROCESSING");
     }
@@ -89,17 +93,49 @@ export const abandonStripeCheckoutSession = async ({
   dependencies?: CheckoutAbandonDependencies;
   request: PayloadRequest;
 }) => {
-  const gateway = dependencies.gateway ?? createStripeCheckoutGateway();
-  const authorizeIntent = dependencies.authorizeIntent ?? authorizeCheckoutIntent;
-  const resolveSession = dependencies.resolveSession ?? resolveStripeCheckoutSession;
+  const authorizeIntent =
+    dependencies.authorizeIntent ?? authorizeCheckoutIntent;
+  const resolveSession =
+    dependencies.resolveSession ?? resolveStripeCheckoutSession;
   const finalize = dependencies.finalizeExpiredIntent ?? finalizeExpiredIntent;
   const intent = await authorizeIntent(request, credential);
   if (intent.status === "expired") {
     throw new StorefrontApiError(410, "INTENT_EXPIRED", { clearCookie: true });
   }
-  if (intent.status !== "checkout_pending" && intent.status !== "checkout_created") {
+  if (intent.status === "draft") {
+    let transaction: StorefrontTransaction | undefined;
+    try {
+      transaction = await beginStorefrontTransaction(request);
+      const locked = await lockAndAuthorizeCheckoutIntent(
+        transaction,
+        credential,
+      );
+      if (locked.status !== "draft")
+        throw new StorefrontApiError(409, "CHECKOUT_PROCESSING");
+      await request.payload.update({
+        collection: "checkout-intents",
+        id: locked.id,
+        data: { status: "expired" },
+        depth: 0,
+        overrideAccess: true,
+        req: request,
+      });
+      await dependencies.testProbe?.afterFinalizationPersistence?.();
+      await commitStorefrontTransaction(transaction);
+      transaction = undefined;
+      return;
+    } catch (error) {
+      await rollbackStorefrontTransaction(transaction);
+      throw error;
+    }
+  }
+  if (
+    intent.status !== "checkout_pending" &&
+    intent.status !== "checkout_created"
+  ) {
     throw new StorefrontApiError(409, "CHECKOUT_STATE_CONFLICT");
   }
+  const gateway = dependencies.gateway ?? createStripeCheckoutGateway();
   const { session } = await resolveSession({ credential, gateway, request });
 
   if (session.status === "complete") {
@@ -117,7 +153,10 @@ export const abandonStripeCheckoutSession = async ({
   if (inactiveSession.status === "complete") {
     throw new StorefrontApiError(409, "CHECKOUT_PROCESSING");
   }
-  if (inactiveSession.status !== "expired" || inactiveSession.id !== session.id) {
+  if (
+    inactiveSession.status !== "expired" ||
+    inactiveSession.id !== session.id
+  ) {
     throw new StorefrontApiError(503, "CHECKOUT_ABANDON_UNAVAILABLE");
   }
 

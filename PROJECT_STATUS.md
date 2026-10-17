@@ -1,6 +1,6 @@
 # Stephish Art Project Status
 
-Last reviewed: 2026-10-12
+Last reviewed: 2026-10-17
 
 ## Current repository state
 
@@ -152,13 +152,27 @@ A narrow cookie-authorized, same-origin, rate-limited portrait payment endpoint 
 
 Verified paid fulfillment validates frozen countries, exact amounts and upload ownership/mappings, transactionally creates all immutable Order Portraits and associates every upload with its paid portrait. Existing paid authority, private photos, refund/dispute reconciliation and outbox behavior are preserved. The homepage and development preview payment availability are unchanged.
 
-Forward migration `20261012_103336_add_portrait_payment_snapshots` adds nullable payment snapshots, reserved preview references and paid portrait upload relationships; it was applied with user approval as database migration batch 19 on 2026-10-12. Post-apply read-only checks confirmed all four columns, both foreign keys and both indexes; all four affected tables retain RLS with zero policies. Baseline/final business-row counts were unchanged. No data backfill, new public policies, dependency/environment changes or live-provider fixtures were performed. Focused mocked tests, TypeScript, changed-file ESLint and production build passed. Actual database locking/lifecycle and Stripe Sandbox acceptance remain unverified; see `docs/unit-3-6-1-acceptance.md`.
+Forward migration `20261012_103336_add_portrait_payment_snapshots` adds nullable payment snapshots, reserved preview references and paid portrait upload relationships; it was applied with user approval as database migration batch 19 on 2026-10-12. Post-apply read-only checks confirmed all four columns, both foreign keys and both indexes; all four affected tables retain RLS with zero policies. Baseline/final business-row counts were unchanged. No data backfill, new public policies or dependency/environment changes were made. Focused mocked tests, TypeScript, changed-file ESLint and production build passed. Database locking/lifecycle and Sandbox Session creation/expiration were subsequently verified in the authorized Unit 3.6.2 fixtures; an actual Hosted Checkout payment and Stripe-originated paid webhook remain pending. See `docs/unit-3-6-1-acceptance.md` and the Unit 3.6.2 live execution record below.
 
 #### Unit 3.6.2 - Public Checkout Rollout and Minimum Artist Workbench
 
-Status: delivery direction approved; implementation not started.
+Status: implementation, local validation and authorized automated live lifecycle complete on 2026-10-12. User reported successful manual acceptance and explicitly approved replacing the homepage checkout on 2026-10-17; the new checkout is now the source-code default. Deployment remains separate.
 
 Connect the accepted multi-portrait UI to payment and complete cancellation/resume/recovery. Move the minimum artist visibility from Unit 3.7 forward so every portrait's template, subjects, notes and up to fifteen Order photos are accessible before switching homepage purchase entry points. Do not release a multi-portrait storefront with the legacy three-photo workbench limit. Complete actual lifecycle and customer/artist acceptance before rollout.
+
+The modal now requests portrait Checkout only after complete references and policy acceptance, displays shipping once and total, reads draft/payment state through a narrow no-provider recovery endpoint, and handles frozen payment resume, completion, expiration and uncertain requests without automatic retries. A dedicated fixed-price draft bootstrap avoids the legacy donation minimum and refuses existing Intent overwrite. Confirmed unpaid draft abandonment locks/rechecks status and preserves existing cleanup timing; active/paid payment protections remain intact. Legacy draft continuation remains available at `/checkout/legacy`.
+
+Artist Orders now group up to five paid portraits and fifteen private references with immutable template previews, subjects/photo labels, notes and prices. The new authenticated template stream checks paid Order ownership and bypasses public optimization; legacy Orders and fulfillment restrictions remain unchanged.
+
+The accepted multi-portrait modal is now the only homepage purchase UI and the development preview is connected to payment. The user subsequently authorized removing the rollout switch and old purchase components; see the cleanup record below. No `.env.local`, deployed/provider configuration, dependencies, schema/migration or real customer data changed. This changes source code, not deployed configuration, Stripe mode or production launch authorization.
+
+With user authorization, real PostgreSQL/private Storage lifecycle checks passed on 2026-10-12: concurrent reservation, signed synthetic paid fulfillment/replay, full portrait/upload/outbox/ledger rollback, immutable catalog snapshots, five-portrait/fifteen-reference artist grouping and authenticated Payload HTTP private streams/anonymous denial. Actual Stripe Sandbox Session creation/resume, US/international countries/rates and expiration passed; two real test Sessions remain expired, not paid. Provider Session metadata was isolated from configured external application webhooks. Paid retrieval in signed synthetic webhook tests was injected, so actual Hosted Checkout payment and Stripe-originated paid webhook remain NOT RUN. Every business-row count and all 18 pre-existing Storage objects/ETags were restored; synthetic email jobs were made non-deliverable within their creation transaction, preventing cron delivery. No test email was sent. User/artist browser acceptance and rollout remain pending; see `docs/unit-3-6-2-acceptance.md` and `tests/integration/portrait-checkout-lifecycle.mjs`.
+
+Acceptance update (2026-10-17): the user subsequently reported successful manual acceptance and approved replacing the homepage checkout. This supersedes the pending manual-acceptance/rollout wording in the 2026-10-12 execution record above. Individual manual Hosted Checkout, email and artist-review checks were not independently observed by the agent; no additional provider verification is claimed. The repository default is enabled, while deployment remains separate.
+
+#### Accepted Checkout Cleanup - 2026-10-17
+
+User-authorized scope: remove the rollout switch and old purchasing UI, retaining historical Orders and necessary payment processing. The homepage unconditionally uses `PortraitCheckoutModal`; its preview-only payment-disabled mode is removed, while coverage and policy gating remain required. The removed flag is no longer read, so stale environment entries have no effect. Removed the old modal, amount/photo/review/recovery step components and dedicated stylesheet. `/checkout/legacy` now redirects home. An old unreserved draft offers explicitly confirmed start-over rather than the retired UI; existing pending/created/completed payments retain resume/abandon/status handling. Shared backend compatibility, webhook/payment authority, legacy Order rendering and data are unchanged. No migration, provider action, environment edit or deployment is part of cleanup.
 
 ### Unit 3.7 - Artist Workbench Expansion
 

@@ -22,6 +22,7 @@ import { storefrontCheckoutIntentEndpoints } from "./server/storefront/checkoutI
 import { postcardTemplateStorefrontEndpoints } from "./server/templates/postcardTemplateEndpoints";
 import { orderFulfillmentEndpoints } from "./server/orders/orderFulfillmentEndpoint";
 import { adminOrderUploadEndpoints } from "./server/orders/adminOrderUploadEndpoint";
+import { adminPortraitTemplateEndpoints } from "./server/orders/adminPortraitTemplateEndpoint";
 import {
   getOrderUploadStorageOptions,
   ORDER_UPLOAD_MAX_FILE_SIZE_BYTES,
@@ -68,6 +69,7 @@ export default buildConfig({
     ...portraitUploadEndpoints,
     ...orderFulfillmentEndpoints,
     ...adminOrderUploadEndpoints,
+    ...adminPortraitTemplateEndpoints,
     ...postcardTemplateStorefrontEndpoints,
   ],
   globals: [CheckoutSettings],
